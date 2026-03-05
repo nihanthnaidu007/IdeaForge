@@ -24,10 +24,21 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# API Keys
+# API Keys (Fallback/Default)
 EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
-TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY', '')
+DEFAULT_TAVILY_KEY = os.environ.get('TAVILY_API_KEY', '')
 JWT_SECRET = os.environ.get('JWT_SECRET', 'ideaforge_default_secret')
+
+# Helper to get user's API keys with fallback
+async def get_api_keys(user_id: str) -> dict:
+    """Get API keys - user's own keys first, then fallback to defaults"""
+    prefs = await db.user_preferences.find_one({"user_id": user_id}, {"_id": 0})
+    
+    return {
+        "tavily": (prefs or {}).get("tavily_api_key") or DEFAULT_TAVILY_KEY,
+        "anthropic": (prefs or {}).get("anthropic_api_key") or EMERGENT_LLM_KEY,
+        "openai": (prefs or {}).get("openai_api_key") or EMERGENT_LLM_KEY,
+    }
 
 # Create the main app
 app = FastAPI(title="IdeaForge API")
@@ -231,8 +242,14 @@ async def get_me(current_user: dict = Depends(get_current_user)):
 # Research Route (Tavily)
 @api_router.post("/research")
 async def research_trends(data: ResearchRequest, current_user: dict = Depends(get_current_user)):
+    api_keys = await get_api_keys(current_user["user_id"])
+    tavily_key = api_keys["tavily"]
+    
+    if not tavily_key:
+        raise HTTPException(status_code=400, detail="No Tavily API key configured. Please add your key in Settings.")
+    
     try:
-        tavily = TavilyClient(api_key=TAVILY_API_KEY)
+        tavily = TavilyClient(api_key=tavily_key)
         
         queries = [
             f"{data.niche} latest trends site:reddit.com",
@@ -257,20 +274,23 @@ async def research_trends(data: ResearchRequest, current_user: dict = Depends(ge
                 continue
         
         if not all_results:
-            # Fallback to GPT-5.2 if Tavily fails
-            all_results = await fallback_trend_research(data.niche, data.tone)
+            # Fallback to LLM if Tavily fails
+            all_results = await fallback_trend_research(data.niche, data.tone, api_keys["openai"])
         
         return {"raw_trends": all_results, "niche": data.niche, "tone": data.tone}
     except Exception as e:
         logger.error(f"Research error: {e}")
-        all_results = await fallback_trend_research(data.niche, data.tone)
+        all_results = await fallback_trend_research(data.niche, data.tone, api_keys["openai"])
         return {"raw_trends": all_results, "niche": data.niche, "tone": data.tone}
 
-async def fallback_trend_research(niche: str, tone: str) -> List[dict]:
+async def fallback_trend_research(niche: str, tone: str, api_key: str) -> List[dict]:
     """Fallback using GPT-5.2 when Tavily fails"""
+    if not api_key:
+        return [{"title": f"Emerging {niche} Trends", "snippet": "Configure API keys in Settings to get live trends", "url": "", "source": "default"}]
+    
     try:
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=api_key,
             session_id=f"trend-fallback-{uuid.uuid4()}",
             system_message=f"You are a tech trend analyst. Generate 6-8 current trending topics in {niche} that would make great LinkedIn posts. Return JSON array with title and snippet for each."
         ).with_model("openai", "gpt-5.2")
@@ -290,11 +310,17 @@ async def fallback_trend_research(niche: str, tone: str) -> List[dict]:
 # Generate Ideas Route (Claude Sonnet)
 @api_router.post("/generate-ideas")
 async def generate_ideas(data: GenerateIdeasRequest, current_user: dict = Depends(get_current_user)):
+    api_keys = await get_api_keys(current_user["user_id"])
+    anthropic_key = api_keys["anthropic"]
+    
+    if not anthropic_key:
+        raise HTTPException(status_code=400, detail="No Anthropic API key configured. Please add your key in Settings or ensure Universal Key has balance.")
+    
     try:
         trends_text = "\n".join([f"- {t['title']}: {t['snippet']}" for t in data.raw_trends[:8]])
         
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=anthropic_key,
             session_id=f"ideas-{uuid.uuid4()}",
             system_message=CLAUDE_IDEA_GENERATION_PROMPT.format(niche=data.niche, tone=data.tone)
         ).with_model("anthropic", "claude-4-sonnet-20250514")
@@ -313,18 +339,26 @@ async def generate_ideas(data: GenerateIdeasRequest, current_user: dict = Depend
             return {"ideas": ideas}
         except json.JSONDecodeError:
             # Fallback to GPT-5.2
-            return await fallback_generate_ideas(data)
+            return await fallback_generate_ideas(data, api_keys["openai"])
     except Exception as e:
-        logger.error(f"Claude idea generation failed: {e}")
-        return await fallback_generate_ideas(data)
+        error_msg = str(e)
+        logger.error(f"Claude idea generation failed: {error_msg}")
+        
+        if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
+            # Try fallback with OpenAI key
+            return await fallback_generate_ideas(data, api_keys["openai"])
+        return await fallback_generate_ideas(data, api_keys["openai"])
 
-async def fallback_generate_ideas(data: GenerateIdeasRequest):
+async def fallback_generate_ideas(data: GenerateIdeasRequest, api_key: str):
     """Fallback using GPT-5.2 when Claude fails"""
+    if not api_key:
+        raise HTTPException(status_code=400, detail="No API key available. Please configure your API keys in Settings.")
+    
     try:
         trends_text = "\n".join([f"- {t['title']}: {t['snippet']}" for t in data.raw_trends[:8]])
         
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=api_key,
             session_id=f"ideas-fallback-{uuid.uuid4()}",
             system_message=CLAUDE_IDEA_GENERATION_PROMPT.format(niche=data.niche, tone=data.tone)
         ).with_model("openai", "gpt-5.2")
@@ -340,7 +374,12 @@ async def fallback_generate_ideas(data: GenerateIdeasRequest):
         ideas = json.loads(clean_response)
         return {"ideas": ideas}
     except Exception as e:
-        logger.error(f"Fallback idea generation failed: {e}")
+        error_msg = str(e)
+        logger.error(f"Fallback idea generation failed: {error_msg}")
+        
+        if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
+            raise HTTPException(status_code=402, detail="API budget exceeded. Please add balance to your API key or configure your own keys in Settings.")
+        
         return {"ideas": [
             {"title": f"Why {data.niche} is Changing Everything", "rating": 7.5, "rating_explanation": "Broad topic with solid engagement potential"},
             {"title": f"3 Things I Learned About {data.niche} This Week", "rating": 8.0, "rating_explanation": "Personal learning content performs well"},
@@ -352,9 +391,15 @@ async def fallback_generate_ideas(data: GenerateIdeasRequest):
 # Idea Insights Route (Claude Sonnet)
 @api_router.post("/idea-insights")
 async def get_idea_insights(data: IdeaInsightsRequest, current_user: dict = Depends(get_current_user)):
+    api_keys = await get_api_keys(current_user["user_id"])
+    anthropic_key = api_keys["anthropic"]
+    
+    if not anthropic_key:
+        raise HTTPException(status_code=400, detail="No Anthropic API key configured. Please add your key in Settings.")
+    
     try:
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=anthropic_key,
             session_id=f"insights-{uuid.uuid4()}",
             system_message=CLAUDE_INSIGHTS_PROMPT
         ).with_model("anthropic", "claude-4-sonnet-20250514")
@@ -371,16 +416,27 @@ async def get_idea_insights(data: IdeaInsightsRequest, current_user: dict = Depe
             insights = json.loads(clean_response)
             return insights
         except json.JSONDecodeError:
-            return await fallback_idea_insights(data)
+            return await fallback_idea_insights(data, api_keys["openai"])
     except Exception as e:
-        logger.error(f"Claude insights failed: {e}")
-        return await fallback_idea_insights(data)
+        error_msg = str(e)
+        logger.error(f"Claude insights failed: {error_msg}")
+        
+        if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
+            return await fallback_idea_insights(data, api_keys["openai"])
+        return await fallback_idea_insights(data, api_keys["openai"])
 
-async def fallback_idea_insights(data: IdeaInsightsRequest):
+async def fallback_idea_insights(data: IdeaInsightsRequest, api_key: str):
     """Fallback using GPT-5.2 when Claude fails"""
+    if not api_key:
+        return {
+            "targeted_audience": f"Tech professionals interested in {data.niche}",
+            "why_it_matters": "This topic addresses current industry challenges",
+            "key_aspects": ["Industry context", "Personal experience", "Actionable advice", "Future outlook"]
+        }
+    
     try:
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=api_key,
             session_id=f"insights-fallback-{uuid.uuid4()}",
             system_message=CLAUDE_INSIGHTS_PROMPT
         ).with_model("openai", "gpt-5.2")
@@ -405,6 +461,12 @@ async def fallback_idea_insights(data: IdeaInsightsRequest):
 # Generate Post Route (GPT-5.2)
 @api_router.post("/generate-post")
 async def generate_post(data: GeneratePostRequest, current_user: dict = Depends(get_current_user)):
+    api_keys = await get_api_keys(current_user["user_id"])
+    openai_key = api_keys["openai"]
+    
+    if not openai_key:
+        raise HTTPException(status_code=400, detail="No OpenAI API key configured. Please add your key in Settings or ensure Universal Key has balance.")
+    
     try:
         format_instruction = f"Format: {data.format}"
         custom = f"\n\nAdditional instructions: {data.custom_instructions}" if data.custom_instructions else ""
@@ -418,7 +480,7 @@ Key Aspects to Cover: {', '.join(data.insights.get('key_aspects', []))}
 """
         
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=openai_key,
             session_id=f"post-{uuid.uuid4()}",
             system_message=GPT_POST_WRITING_PROMPT
         ).with_model("openai", "gpt-5.2")
@@ -442,7 +504,7 @@ Write the post now.""")
         if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
             raise HTTPException(
                 status_code=402, 
-                detail="API budget exceeded. Please add more balance to your Universal Key in Profile -> Universal Key -> Add Balance"
+                detail="API budget exceeded. Please add your own OpenAI API key in Settings, or add balance to your Universal Key in Profile -> Universal Key -> Add Balance"
             )
         raise HTTPException(status_code=500, detail="Failed to generate post. Please try again.")
 
@@ -454,9 +516,15 @@ async def regenerate_post(data: GeneratePostRequest, current_user: dict = Depend
 # Tweak Post Route
 @api_router.post("/tweak-post")
 async def tweak_post(data: TweakPostRequest, current_user: dict = Depends(get_current_user)):
+    api_keys = await get_api_keys(current_user["user_id"])
+    openai_key = api_keys["openai"]
+    
+    if not openai_key:
+        raise HTTPException(status_code=400, detail="No OpenAI API key configured. Please add your key in Settings.")
+    
     try:
         chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
+            api_key=openai_key,
             session_id=f"tweak-{uuid.uuid4()}",
             system_message=GPT_POST_WRITING_PROMPT
         ).with_model("openai", "gpt-5.2")
@@ -480,7 +548,7 @@ Write the updated post now.""")
         if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
             raise HTTPException(
                 status_code=402, 
-                detail="API budget exceeded. Please add more balance to your Universal Key."
+                detail="API budget exceeded. Please add your own OpenAI API key in Settings, or add balance to your Universal Key."
             )
         raise HTTPException(status_code=500, detail="Failed to tweak post. Please try again.")
 
@@ -542,6 +610,13 @@ async def toggle_bookmark(idea_id: str, current_user: dict = Depends(get_current
     return {"is_bookmarked": new_status}
 
 # User Preferences Routes
+class PreferencesUpdate(BaseModel):
+    default_tone: Optional[str] = None
+    default_niche: Optional[str] = None
+    tavily_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    openai_api_key: Optional[str] = None
+
 @api_router.get("/preferences")
 async def get_preferences(current_user: dict = Depends(get_current_user)):
     prefs = await db.user_preferences.find_one(
@@ -549,22 +624,45 @@ async def get_preferences(current_user: dict = Depends(get_current_user)):
         {"_id": 0}
     )
     if not prefs:
-        return {"default_tone": "professional", "default_niche": "AI"}
-    return prefs
+        return {
+            "default_tone": "professional", 
+            "default_niche": "AI",
+            "has_tavily_key": False,
+            "has_anthropic_key": False,
+            "has_openai_key": False
+        }
+    return {
+        "default_tone": prefs.get("default_tone", "professional"),
+        "default_niche": prefs.get("default_niche", "AI"),
+        "has_tavily_key": bool(prefs.get("tavily_api_key")),
+        "has_anthropic_key": bool(prefs.get("anthropic_api_key")),
+        "has_openai_key": bool(prefs.get("openai_api_key"))
+    }
 
 @api_router.post("/preferences")
-async def save_preferences(data: dict, current_user: dict = Depends(get_current_user)):
+async def save_preferences(data: PreferencesUpdate, current_user: dict = Depends(get_current_user)):
+    update_data = {
+        "user_id": current_user["user_id"],
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    if data.default_tone:
+        update_data["default_tone"] = data.default_tone
+    if data.default_niche:
+        update_data["default_niche"] = data.default_niche
+    if data.tavily_api_key is not None:
+        update_data["tavily_api_key"] = data.tavily_api_key if data.tavily_api_key else None
+    if data.anthropic_api_key is not None:
+        update_data["anthropic_api_key"] = data.anthropic_api_key if data.anthropic_api_key else None
+    if data.openai_api_key is not None:
+        update_data["openai_api_key"] = data.openai_api_key if data.openai_api_key else None
+    
     await db.user_preferences.update_one(
         {"user_id": current_user["user_id"]},
-        {"$set": {
-            "user_id": current_user["user_id"],
-            "default_tone": data.get("default_tone", "professional"),
-            "default_niche": data.get("default_niche", "AI"),
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }},
+        {"$set": update_data},
         upsert=True
     )
-    return {"message": "Preferences saved"}
+    return {"message": "Preferences saved successfully"}
 
 # Include the router
 app.include_router(api_router)

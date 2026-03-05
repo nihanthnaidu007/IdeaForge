@@ -281,6 +281,114 @@ class IdeaForgeAPITester:
         save_result = self.run_test("Save Preferences", "POST", "preferences", 200, save_data)
         return prefs is not None and save_result is not None
 
+    def test_api_key_status(self):
+        """Test API key status in preferences"""
+        print("🔑 Testing API Key Status...")
+        result = self.run_test("Get API Key Status", "GET", "preferences", 200)
+        
+        if result:
+            # Check for required status fields
+            required_fields = ["has_tavily_key", "has_anthropic_key", "has_openai_key"]
+            for field in required_fields:
+                if field not in result:
+                    self.log_test(f"API Key Status - {field}", False, f"Missing {field} in response")
+                    return False
+                else:
+                    print(f"   ✅ {field}: {result[field]}")
+            return True
+        return False
+
+    def test_save_api_keys(self):
+        """Test saving individual API keys"""
+        print("💾 Testing API Key Saving...")
+        
+        # Test saving Tavily key
+        tavily_data = {"tavily_api_key": "test-tavily-key"}
+        tavily_result = self.run_test("Save Tavily Key", "POST", "preferences", 200, tavily_data)
+        
+        # Test saving Anthropic key
+        anthropic_data = {"anthropic_api_key": "test-anthropic-key"}
+        anthropic_result = self.run_test("Save Anthropic Key", "POST", "preferences", 200, anthropic_data)
+        
+        # Test saving OpenAI key
+        openai_data = {"openai_api_key": "test-openai-key"}
+        openai_result = self.run_test("Save OpenAI Key", "POST", "preferences", 200, openai_data)
+        
+        # Verify keys are saved by checking status
+        status_result = self.run_test("Check Key Status After Save", "GET", "preferences", 200)
+        
+        if status_result:
+            expected_status = {
+                "has_tavily_key": True,
+                "has_anthropic_key": True, 
+                "has_openai_key": True
+            }
+            
+            for key, expected in expected_status.items():
+                actual = status_result.get(key, False)
+                if actual != expected:
+                    self.log_test(f"API Key Status Verification - {key}", False, 
+                                f"Expected {expected}, got {actual}")
+                    return False
+                else:
+                    print(f"   ✅ {key}: {actual} (saved correctly)")
+        
+        return (tavily_result is not None and anthropic_result is not None 
+                and openai_result is not None and status_result is not None)
+
+    def test_api_key_priority_system(self):
+        """Test API key priority: user keys > universal key > error"""
+        print("🏆 Testing API Key Priority System...")
+        
+        # First clear all user keys to test fallback
+        clear_data = {
+            "tavily_api_key": "",
+            "anthropic_api_key": "",
+            "openai_api_key": ""
+        }
+        self.run_test("Clear User API Keys", "POST", "preferences", 200, clear_data)
+        
+        # Test research with fallback to universal key
+        research_data = {"niche": "AI", "tone": "professional"}
+        fallback_result = self.run_test("Research with Universal Key Fallback", "POST", "research", 200, research_data)
+        
+        if not fallback_result:
+            print("   ⚠️ Universal key fallback test failed - may indicate no universal keys or balance issues")
+            
+        # Now set user's own Tavily key
+        user_tavily_key = "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"
+        user_key_data = {"tavily_api_key": user_tavily_key}
+        self.run_test("Set User Tavily Key", "POST", "preferences", 200, user_key_data)
+        
+        # Test research with user's key (should take priority)
+        user_key_result = self.run_test("Research with User Key Priority", "POST", "research", 200, research_data)
+        
+        return user_key_result is not None
+
+    def test_api_endpoints_with_keys(self):
+        """Test that API endpoints work with configured keys"""
+        print("🔧 Testing API Endpoints with Keys...")
+        
+        # Set up user keys
+        keys_data = {
+            "tavily_api_key": "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",
+            "anthropic_api_key": "sk-emergent-2E02f418e329028885",
+            "openai_api_key": "sk-emergent-2E02f418e329028885"
+        }
+        setup_result = self.run_test("Setup User API Keys", "POST", "preferences", 200, keys_data)
+        
+        if not setup_result:
+            return False
+            
+        # Test research endpoint with user's Tavily key
+        research_data = {"niche": "AI", "tone": "professional"}
+        research_result = self.run_test("Research with User Tavily Key", "POST", "research", 200, research_data)
+        
+        if research_result and "raw_trends" in research_result:
+            print(f"   ✅ Research API working with user key, got {len(research_result['raw_trends'])} trends")
+        
+        return research_result is not None
+
     def run_full_test_suite(self):
         """Run complete test suite"""
         print("🚀 Starting IdeaForge API Test Suite")
@@ -315,6 +423,12 @@ class IdeaForgeAPITester:
         
         # Settings tests
         self.test_preferences()
+        
+        # API Key Priority System tests
+        self.test_api_key_status()
+        self.test_save_api_keys()
+        self.test_api_key_priority_system()
+        self.test_api_endpoints_with_keys()
         
         return self.generate_report()
 

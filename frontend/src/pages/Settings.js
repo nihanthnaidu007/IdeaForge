@@ -18,6 +18,9 @@ import {
   Eye,
   EyeOff,
   Save,
+  Check,
+  X,
+  AlertCircle,
 } from "lucide-react";
 
 const NICHES = ["AI", "Web Dev", "Data Science", "Startups", "Productivity"];
@@ -35,12 +38,18 @@ const Settings = () => {
     anthropic: "",
     openai: "",
   });
+  const [keyStatus, setKeyStatus] = useState({
+    has_tavily_key: false,
+    has_anthropic_key: false,
+    has_openai_key: false,
+  });
   const [showKeys, setShowKeys] = useState({
     tavily: false,
     anthropic: false,
     openai: false,
   });
   const [loading, setLoading] = useState(false);
+  const [savingKey, setSavingKey] = useState(null);
 
   const headers = { Authorization: `Bearer ${token}` };
 
@@ -55,6 +64,11 @@ const Settings = () => {
         default_niche: res.data.default_niche || "AI",
         default_tone: res.data.default_tone || "professional",
       });
+      setKeyStatus({
+        has_tavily_key: res.data.has_tavily_key || false,
+        has_anthropic_key: res.data.has_anthropic_key || false,
+        has_openai_key: res.data.has_openai_key || false,
+      });
     } catch (error) {
       console.error("Failed to load preferences");
     }
@@ -63,12 +77,77 @@ const Settings = () => {
   const savePreferences = async () => {
     setLoading(true);
     try {
-      await axios.post(`${API}/preferences`, preferences, { headers });
+      await axios.post(`${API}/preferences`, {
+        default_tone: preferences.default_tone,
+        default_niche: preferences.default_niche,
+      }, { headers });
       toast.success("Preferences saved!");
     } catch (error) {
       toast.error("Failed to save preferences");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveApiKey = async (keyType) => {
+    const keyValue = apiKeys[keyType];
+    const fieldMap = {
+      tavily: "tavily_api_key",
+      anthropic: "anthropic_api_key",
+      openai: "openai_api_key",
+    };
+    const statusMap = {
+      tavily: "has_tavily_key",
+      anthropic: "has_anthropic_key",
+      openai: "has_openai_key",
+    };
+
+    setSavingKey(keyType);
+    try {
+      await axios.post(`${API}/preferences`, {
+        [fieldMap[keyType]]: keyValue,
+      }, { headers });
+      
+      setKeyStatus(prev => ({
+        ...prev,
+        [statusMap[keyType]]: !!keyValue,
+      }));
+      setApiKeys(prev => ({ ...prev, [keyType]: "" }));
+      toast.success(`${keyType.charAt(0).toUpperCase() + keyType.slice(1)} API key ${keyValue ? "saved" : "removed"}!`);
+    } catch (error) {
+      toast.error(`Failed to save ${keyType} API key`);
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const clearApiKey = async (keyType) => {
+    const fieldMap = {
+      tavily: "tavily_api_key",
+      anthropic: "anthropic_api_key",
+      openai: "openai_api_key",
+    };
+    const statusMap = {
+      tavily: "has_tavily_key",
+      anthropic: "has_anthropic_key",
+      openai: "has_openai_key",
+    };
+
+    setSavingKey(keyType);
+    try {
+      await axios.post(`${API}/preferences`, {
+        [fieldMap[keyType]]: "",
+      }, { headers });
+      
+      setKeyStatus(prev => ({
+        ...prev,
+        [statusMap[keyType]]: false,
+      }));
+      toast.success(`${keyType.charAt(0).toUpperCase() + keyType.slice(1)} API key removed`);
+    } catch (error) {
+      toast.error(`Failed to remove ${keyType} API key`);
+    } finally {
+      setSavingKey(null);
     }
   };
 
@@ -100,23 +179,68 @@ const Settings = () => {
       {/* Main Content */}
       <main className="pt-20 pb-12 px-6">
         <div className="max-w-2xl mx-auto space-y-8">
+          {/* Info Banner */}
+          <div className="glass-card rounded-xl p-4 border-l-4 border-lime">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-lime flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="text-white font-medium mb-1">API Key Priority</p>
+                <p className="text-white/60">
+                  Your own API keys (set below) are used first. If not configured, the app falls back to the Universal Key. 
+                  If that's also unavailable or out of balance, you'll see an error message.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* API Keys Section */}
           <div className="glass-card rounded-xl p-6">
             <h2 className="font-heading text-xl font-semibold text-white mb-2">
               API Configuration
             </h2>
             <p className="text-white/50 text-sm mb-6">
-              For testing purposes. These override server keys.
+              Add your own API keys to use instead of the Universal Key. Keys are stored securely.
             </p>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               {[
-                { id: "tavily", label: "Tavily API Key" },
-                { id: "anthropic", label: "Anthropic API Key (Claude Sonnet)" },
-                { id: "openai", label: "OpenAI API Key (GPT-5.2)" },
+                { 
+                  id: "tavily", 
+                  label: "Tavily API Key",
+                  description: "For live trend research from Reddit, Google Trends, and news",
+                  link: "https://tavily.com"
+                },
+                { 
+                  id: "anthropic", 
+                  label: "Anthropic API Key (Claude)",
+                  description: "For AI-powered idea generation and audience insights",
+                  link: "https://console.anthropic.com"
+                },
+                { 
+                  id: "openai", 
+                  label: "OpenAI API Key (GPT)",
+                  description: "For writing LinkedIn posts",
+                  link: "https://platform.openai.com"
+                },
               ].map((api) => (
-                <div key={api.id}>
-                  <label className="text-sm text-white/60 mb-2 block">{api.label}</label>
+                <div key={api.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm text-white/80">{api.label}</label>
+                    {keyStatus[`has_${api.id}_key`] ? (
+                      <span className="flex items-center gap-1 text-xs text-rating-high">
+                        <Check className="w-3 h-3" />
+                        Configured
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-xs text-white/40">
+                        <X className="w-3 h-3" />
+                        Using fallback
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-white/40 mb-2">
+                    {api.description} · <a href={api.link} target="_blank" rel="noopener noreferrer" className="text-lime hover:underline">Get key</a>
+                  </p>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Input
@@ -124,7 +248,7 @@ const Settings = () => {
                         value={apiKeys[api.id]}
                         onChange={(e) => setApiKeys(prev => ({ ...prev, [api.id]: e.target.value }))}
                         data-testid={`${api.id}-key-input`}
-                        placeholder="••••••••••••••••••••••"
+                        placeholder={keyStatus[`has_${api.id}_key`] ? "••••••••••••••• (key saved)" : "Enter your API key..."}
                         className="bg-void border-white/10 text-white pr-10"
                       />
                       <button
@@ -140,21 +264,32 @@ const Settings = () => {
                       </button>
                     </div>
                     <Button
-                      variant="outline"
+                      onClick={() => saveApiKey(api.id)}
+                      disabled={savingKey === api.id || !apiKeys[api.id]}
                       data-testid={`save-${api.id}-btn`}
-                      className="border-white/10 text-white hover:bg-white/5"
-                      onClick={() => toast.success(`${api.label} saved (not persisted - demo)`)}
+                      className="bg-lime text-void hover:bg-lime-hover disabled:opacity-50"
                     >
-                      <Save className="w-4 h-4" />
+                      {savingKey === api.id ? (
+                        <span className="animate-spin">...</span>
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
                     </Button>
+                    {keyStatus[`has_${api.id}_key`] && (
+                      <Button
+                        onClick={() => clearApiKey(api.id)}
+                        disabled={savingKey === api.id}
+                        data-testid={`clear-${api.id}-btn`}
+                        variant="outline"
+                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
-
-            <p className="text-xs text-white/30 mt-4">
-              API keys are encrypted and stored securely. They are never logged or shared.
-            </p>
           </div>
 
           {/* Preferences Section */}
