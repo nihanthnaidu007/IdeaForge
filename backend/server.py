@@ -435,8 +435,16 @@ Write the post now.""")
         response = await chat.send_message(msg)
         return {"post": response.strip()}
     except Exception as e:
-        logger.error(f"Post generation failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate post")
+        error_msg = str(e)
+        logger.error(f"Post generation failed: {error_msg}")
+        
+        # Check for budget exceeded error and provide helpful message
+        if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
+            raise HTTPException(
+                status_code=402, 
+                detail="API budget exceeded. Please add more balance to your Universal Key in Profile -> Universal Key -> Add Balance"
+            )
+        raise HTTPException(status_code=500, detail="Failed to generate post. Please try again.")
 
 # Regenerate Post Route
 @api_router.post("/regenerate-post")
@@ -466,8 +474,15 @@ Write the updated post now.""")
         response = await chat.send_message(msg)
         return {"post": response.strip()}
     except Exception as e:
-        logger.error(f"Tweak post failed: {e}")
-        raise HTTPException(status_code=500, detail="Failed to tweak post")
+        error_msg = str(e)
+        logger.error(f"Tweak post failed: {error_msg}")
+        
+        if "budget" in error_msg.lower() or "exceeded" in error_msg.lower():
+            raise HTTPException(
+                status_code=402, 
+                detail="API budget exceeded. Please add more balance to your Universal Key."
+            )
+        raise HTTPException(status_code=500, detail="Failed to tweak post. Please try again.")
 
 # Save Idea Routes
 @api_router.post("/save-idea", response_model=SavedIdea)

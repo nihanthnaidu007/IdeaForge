@@ -112,7 +112,11 @@ const Dashboard = () => {
       toast.success("Ideas generated successfully!");
     } catch (error) {
       console.error("Error generating ideas:", error);
-      toast.error("Failed to generate ideas. Please try again.");
+      if (error.response?.status === 402) {
+        toast.error("API budget exceeded. Please add balance to your Universal Key in Profile -> Universal Key -> Add Balance");
+      } else {
+        toast.error("Failed to generate ideas. Please try again.");
+      }
     } finally {
       clearInterval(interval);
       setScanningText("");
@@ -170,7 +174,11 @@ const Dashboard = () => {
       toast.success("Post generated!");
     } catch (error) {
       console.error("Error generating post:", error);
-      toast.error("Failed to generate post");
+      if (error.response?.status === 402) {
+        toast.error("API budget exceeded. Please add balance to your Universal Key in Profile -> Universal Key -> Add Balance");
+      } else {
+        toast.error("Failed to generate post. Please try again.");
+      }
     } finally {
       setPostLoading(false);
     }
@@ -193,7 +201,11 @@ const Dashboard = () => {
       setGeneratedPost(res.data.post);
       toast.success("Post regenerated!");
     } catch (error) {
-      toast.error("Failed to regenerate post");
+      if (error.response?.status === 402) {
+        toast.error("API budget exceeded. Please add balance to your Universal Key.");
+      } else {
+        toast.error("Failed to regenerate post");
+      }
     } finally {
       setPostLoading(false);
     }
@@ -219,7 +231,11 @@ const Dashboard = () => {
       setTweakInstruction("");
       toast.success("Post updated!");
     } catch (error) {
-      toast.error("Failed to tweak post");
+      if (error.response?.status === 402) {
+        toast.error("API budget exceeded. Please add balance to your Universal Key.");
+      } else {
+        toast.error("Failed to tweak post");
+      }
     } finally {
       setPostLoading(false);
     }
