@@ -19,6 +19,36 @@ class DuplicateKeyError(Exception):
     """Raised by the fake's simulated unique indexes (mirrors pymongo.errors)."""
 
 
+def _set_path(doc: Any, parts: list[str], value: Any) -> None:
+    """Set a dotted Mongo path, creating dicts and extending lists as needed.
+
+    Handles positional segments (``variants.0``) the way real Mongo does —
+    the tweak route writes ``$set: {"variants.<index>": ...}``.
+    """
+    key = parts[0]
+    if isinstance(doc, list):
+        idx = int(key)
+        while len(doc) <= idx:
+            doc.append(None)
+        if len(parts) == 1:
+            doc[idx] = value
+            return
+        if not isinstance(doc[idx], (dict, list)):
+            doc[idx] = {}
+        _set_path(doc[idx], parts[1:], value)
+        return
+    if len(parts) == 1:
+        doc[key] = value
+        return
+    if parts[1].isdigit() and not isinstance(doc.get(key), dict):
+        doc.setdefault(key, [])
+        _set_path(doc[key], parts[1:], value)
+        return
+    if not isinstance(doc.get(key), dict):
+        doc[key] = {}
+    _set_path(doc[key], parts[1:], value)
+
+
 class FakeCursor:
     def __init__(self, docs: list[dict[str, Any]]) -> None:
         self._docs = list(docs)
@@ -87,11 +117,7 @@ class FakeCollection:
     def _apply_update(self, doc: dict[str, Any], update: dict[str, Any]) -> None:
         if "$set" in update:
             for key, value in update["$set"].items():
-                if "." in key:
-                    parent, leaf = key.rsplit(".", 1)
-                    doc.setdefault(parent, {})[leaf] = value
-                else:
-                    doc[key] = value
+                _set_path(doc, key.split("."), value)
         if "$setOnInsert" in update:
             for key, value in update["$setOnInsert"].items():
                 doc.setdefault(key, value)
@@ -239,7 +265,12 @@ class FakeDatabase:
         self.saved_ideas = FakeCollection(unique_fields=("id",))
         self.user_preferences = FakeCollection(unique_fields=("user_id",))
         self.key_audit = FakeCollection()
+        # Variants lane: explicit attributes for parity with the real schema
+        # (the routes access these as attributes, and db.py builds indexes on
+        # variant_sets + usage_events at startup).
+        self.variant_sets = FakeCollection(unique_fields=("id",))
         self.usage_events = FakeCollection()
+        self.voice_profiles = FakeCollection(unique_fields=("user_id",))
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 
