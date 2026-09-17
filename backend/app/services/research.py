@@ -13,7 +13,11 @@ from typing import Any
 
 import httpx
 
-from app.services.llm.provider import ProviderAuthError, ProviderError, ProviderQuotaError
+from app.services.llm.provider import (
+    ProviderAuthError,
+    ProviderError,
+    ProviderRateLimitedError,
+)
 
 _SEARCH_URL = "https://api.tavily.com/search"
 _SNIPPET_LENGTH = 300
@@ -108,7 +112,9 @@ class TavilyResearchService:
                 "Tavily rejected the API key — please check Settings.", provider="tavily"
             )
         if response.status_code == 429:
-            raise ProviderQuotaError(
+            # M3: a rate limit is a transient condition, not a billing event —
+            # 429 (retryable), never 402 PROVIDER_QUOTA.
+            raise ProviderRateLimitedError(
                 "Tavily rate limit hit — please retry shortly.", provider="tavily"
             )
         if response.status_code >= 400:
