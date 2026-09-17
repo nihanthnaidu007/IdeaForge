@@ -14,18 +14,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle, Check, X, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Check, X, Eye, EyeOff, Loader2 } from "lucide-react";
 import { NICHES, TONES } from "@/lib/constants";
 
 // §5.2 card contract: connected cards show the Connected chip + masked hint
 // and never re-expose the key; "Replace" is the only path to a new value.
-// §5.3 gives each provider's setup line verbatim. The "Test key" action from
-// §5.2 is intentionally absent — the backend exposes no test-key endpoint
-// yet; adding a fake control would violate the honesty law. Flagged for the
-// PR that ships the endpoint.
+// §5.3 gives each provider's setup line verbatim; PR #9 shipped
+// POST /keys/{provider}/test, so the one-click validation renders for real.
 const KEY_PROVIDERS = [
   {
     id: "tavily",
+    name: "Tavily",
     label: "Tavily API key",
     placeholder: "tvly-…",
     purpose: "Tavily powers Trend Radar. Create a key in your Tavily account console — research bills only to your Tavily plan.",
@@ -33,6 +32,7 @@ const KEY_PROVIDERS = [
   },
   {
     id: "anthropic",
+    name: "Anthropic",
     label: "Anthropic API key",
     placeholder: "sk-ant-…",
     purpose: "Anthropic is one of the two drafting engines. Create a key in the Anthropic Console — drafts bill only to your Anthropic account.",
@@ -40,6 +40,7 @@ const KEY_PROVIDERS = [
   },
   {
     id: "openai",
+    name: "OpenAI",
     label: "OpenAI API key",
     placeholder: "sk-…",
     purpose: "OpenAI is one of the two drafting engines. Create a key at platform.openai.com — drafts bill only to your OpenAI account.",
@@ -70,6 +71,7 @@ const Settings = () => {
   const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState(null);
+  const [testState, setTestState] = useState({});
 
   const fetchPreferences = useCallback(async () => {
     setStatus("loading");
@@ -84,12 +86,14 @@ const Settings = () => {
         has_anthropic_key: data.has_anthropic_key || false,
         has_openai_key: data.has_openai_key || false,
       });
-      // Masked hints arrive once the backend ships them (PR #9's masked
-      // responses). Until then the chip alone renders — no fabricated ****.
+      // key_hints is PR #9's masked-hint map — the ONLY key-derived data any
+      // response carries. Never fabricate a **** when a provider is connected
+      // but unhinted (pre-#9 documents have no hint until re-saved).
+      const hints = data.key_hints ?? {};
       setKeyHints({
-        tavily: data.tavily_key_hint ?? null,
-        anthropic: data.anthropic_key_hint ?? null,
-        openai: data.openai_key_hint ?? null,
+        tavily: hints.tavily ?? null,
+        anthropic: hints.anthropic ?? null,
+        openai: hints.openai ?? null,
       });
       setStatus("ready");
     } catch (error) {
@@ -180,6 +184,47 @@ const Settings = () => {
     setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // §5.3 state machine: idle → testing → passed | failed. The test is one
+  // real, cheap provider call — a pass means the key authenticates, and the
+  // copy says "accepted", never "unlimited".
+  const testKey = async (providerId) => {
+    setTestState((prev) => ({ ...prev, [providerId]: { phase: "testing" } }));
+    try {
+      await api.post(`/keys/${providerId}/test`);
+      setTestState((prev) => ({ ...prev, [providerId]: { phase: "passed" } }));
+    } catch (error) {
+      setTestState((prev) => ({
+        ...prev,
+        [providerId]: {
+          phase: "failed",
+          kind: error.kind,
+          retryAfter: error.retryAfter,
+          message: error.message,
+        },
+      }));
+    }
+  };
+
+  // §5.3's per-kind failed lines. Anything off the table falls back to the
+  // ApiError's own honest copy rather than a generic "try again".
+  const testFailureLine = (providerName, failure) => {
+    switch (failure.kind) {
+      case "auth":
+        return "Key rejected — check for a paste error or a revoked key, then re-enter it.";
+      case "quota":
+        return "Key is live, but the account is out of credit or over quota.";
+      case "rate_limited":
+        return failure.retryAfter
+          ? `${providerName} is rate-limiting the test. Wait ${failure.retryAfter}s and test again.`
+          : `${providerName} is rate-limiting the test. Wait a moment and test again.`;
+      case "network":
+      case "unavailable":
+        return `Couldn't reach ${providerName} to test. Your key is saved — try again in a minute.`;
+      default:
+        return failure.message;
+    }
+  };
+
   const connected = (id) => keyStatus[`has_${id}_key`];
 
   return (
@@ -268,7 +313,32 @@ const Settings = () => {
                               Key on file: {keyHints[provider.id]}
                             </p>
                           )}
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 flex-wrap items-center">
+                            {/* §5.3: one-click validation against the real
+                                endpoint PR #9 shipped — never a fake control. */}
+                            <Button
+                              onClick={() => testKey(provider.id)}
+                              disabled={
+                                testState[provider.id]?.phase === "testing" ||
+                                savingKey === provider.id
+                              }
+                              data-testid={`test-${provider.id}-btn`}
+                              variant="outline"
+                              size="sm"
+                              className="border-white/10 text-white hover:bg-white/5"
+                            >
+                              {testState[provider.id]?.phase === "testing" ? (
+                                <>
+                                  <Loader2
+                                    className="w-3 h-3 animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                  Testing…
+                                </>
+                              ) : (
+                                "Test key"
+                              )}
+                            </Button>
                             <Button
                               onClick={() =>
                                 setReplacing((prev) => ({ ...prev, [provider.id]: true }))
@@ -291,6 +361,39 @@ const Settings = () => {
                               Remove
                             </Button>
                           </div>
+                          {/* §5.3 feedback line, below the button: neutral
+                              text; accents only (lime pass, red fail) per the
+                              §2.1 color law. */}
+                          {testState[provider.id]?.phase === "testing" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              aria-live="polite"
+                            >
+                              Runs a free validation call against {provider.name} — no generation
+                              cost.
+                            </p>
+                          )}
+                          {testState[provider.id]?.phase === "passed" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              aria-live="polite"
+                            >
+                              <Check className="w-3 h-3 inline text-lime mr-1" aria-hidden="true" />
+                              Key works — {provider.name} accepted it just now.
+                            </p>
+                          )}
+                          {testState[provider.id]?.phase === "failed" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              role="alert"
+                            >
+                              <X className="w-3 h-3 inline text-red-400 mr-1" aria-hidden="true" />
+                              {testFailureLine(provider.name, testState[provider.id])}
+                            </p>
+                          )}
                         </>
                       ) : (
                         <>

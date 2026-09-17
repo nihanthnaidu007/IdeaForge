@@ -160,4 +160,70 @@ describe("componentization", () => {
     await user.click(settingsBtn);
     expect(await screen.findByTestId("settings-skeleton")).toBeInTheDocument();
   });
+
+  it("renders the masked hint and the §5.3 failed test-key line on a rejected key", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const origGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url === "/auth/me") return authMe();
+      if (url === "/preferences")
+        return Promise.resolve({
+          default_tone: "professional",
+          default_niche: "AI",
+          has_tavily_key: true,
+          key_hints: { tavily: "****abcd" },
+        });
+      return Promise.resolve({});
+    });
+
+    try {
+      const user = userEvent.setup();
+      renderRoute("/settings");
+
+      // §5.2: the masked hint comes from PR #9's key_hints map — the only
+      // key-derived data any response carries.
+      expect(await screen.findByTestId("tavily-key-hint")).toHaveTextContent("****abcd");
+
+      // §5.3 failed state: the typed auth failure renders its verbatim line.
+      api.post.mockRejectedValueOnce(
+        new ApiError({
+          status: 401,
+          kind: ERROR_KINDS.AUTH,
+          provider: "tavily",
+          message: "The provider rejected this key — check Settings.",
+        })
+      );
+      await user.click(screen.getByTestId("test-tavily-btn"));
+      const line = await screen.findByTestId("tavily-test-line");
+      expect(line).toHaveTextContent(
+        "Key rejected — check for a paste error or a revoked key, then re-enter it."
+      );
+    } finally {
+      api.get.mockImplementation(origGet);
+    }
+  });
+
+  it("renders the §5.3 passed line when the provider accepts the key", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const origGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url === "/auth/me") return authMe();
+      if (url === "/preferences")
+        return Promise.resolve({ has_openai_key: true, key_hints: { openai: "****ef12" } });
+      return Promise.resolve({});
+    });
+
+    try {
+      const user = userEvent.setup();
+      renderRoute("/settings");
+      await screen.findByTestId("openai-key-hint");
+
+      api.post.mockResolvedValueOnce({ provider: "openai", valid: true, hint: "****ef12" });
+      await user.click(screen.getByTestId("test-openai-btn"));
+      const line = await screen.findByTestId("openai-test-line");
+      expect(line).toHaveTextContent("Key works — OpenAI accepted it just now.");
+    } finally {
+      api.get.mockImplementation(origGet);
+    }
+  });
 });

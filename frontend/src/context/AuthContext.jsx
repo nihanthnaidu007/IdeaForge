@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { api, onUnauthorized } from "@/api/client";
 
 // Auth context extracted from App.js so shared components (Navbar,
@@ -64,12 +65,14 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // A 401 from any authenticated request means the session token is dead.
-  // Clear local state so protected routes bounce back to the landing page.
-  // Re-registered on each render is fine — registration is an idempotent
-  // assignment and logout only touches stable setters.
+  // A 401 that survives the single-flight refresh means the session is dead.
+  // The interceptor is the only caller of this handler — manual sign-out goes
+  // through logout() directly — so the forced path gets the expiry notice.
   useEffect(() => {
-    onUnauthorized(logout);
+    onUnauthorized(() => {
+      toast.error("Your session expired — log in again.");
+      logout();
+    });
   }, [logout]);
 
   return (
