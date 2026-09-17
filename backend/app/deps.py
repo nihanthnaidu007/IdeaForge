@@ -14,7 +14,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.requests import Request
 
 from app.config import Settings
-from app.services.llm.provider import LLMProvider, UnconfiguredLLM, resolve_user_key
+from app.services.llm.anthropic_client import AnthropicLLM
+from app.services.llm.openai_client import OpenAILLM
+from app.services.llm.provider import (
+    LLMProvider,
+    ProviderError,
+    resolve_user_key,
+)
 from app.services.vault import Vault
 
 _bearer = HTTPBearer(auto_error=True)
@@ -65,8 +71,14 @@ async def get_llm(
 ) -> LLMProvider:
     """Resolve the caller's key (fail loud if absent), then return the provider.
 
-    The direct-SDK provider layer lands in the next release PR; the seam keeps
-    routes fully wired and returning typed errors in the meantime.
+    Every generation route resolves its key here — BYOK first, server env
+    default second, typed MissingKeyError otherwise. No universal-key fallback.
     """
-    await resolve_user_key(db, vault, user_id, provider, settings)
-    return UnconfiguredLLM(provider=provider)
+    if provider not in ("anthropic", "openai"):
+        raise ProviderError(
+            f"'{provider}' is not an LLM provider.", provider=provider
+        )
+    api_key = await resolve_user_key(db, vault, user_id, provider, settings)
+    if provider == "anthropic":
+        return AnthropicLLM(api_key=api_key, model=settings.anthropic_model)
+    return OpenAILLM(api_key=api_key, model=settings.openai_model)

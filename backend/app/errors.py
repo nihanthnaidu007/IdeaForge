@@ -19,6 +19,7 @@ from app.services.llm.provider import (
     ProviderAuthError,
     ProviderError,
     ProviderQuotaError,
+    ProviderRateLimitedError,
     ProviderUnavailableError,
 )
 from app.services.research import ResearchError
@@ -29,6 +30,7 @@ _TYPED_ERRORS: tuple[type[Exception], ...] = (
     MissingKeyError,
     ProviderAuthError,
     ProviderQuotaError,
+    ProviderRateLimitedError,
     ProviderUnavailableError,
     ProviderError,
     ResearchError,
@@ -52,7 +54,11 @@ async def _typed_error_handler(request: Request, exc: Exception) -> JSONResponse
     if request_id:
         body["request_id"] = request_id
     logger.warning("typed error: %s (%s)", kind, exc)
-    return JSONResponse(status_code=status, content=body)
+    headers: dict[str, str] | None = None
+    retry_after = getattr(exc, "retry_after", None)
+    if retry_after:
+        headers = {"Retry-After": str(int(retry_after))}
+    return JSONResponse(status_code=status, content=body, headers=headers)
 
 
 async def _unhandled_handler(request: Request, exc: Exception) -> JSONResponse:
