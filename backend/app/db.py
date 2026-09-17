@@ -40,6 +40,12 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             [("expires_at", ASCENDING)], name="ttl_refresh_expiry", expireAfterSeconds=0
         ),
     ],
+    "key_audit": [
+        IndexModel(
+            [("user_id", ASCENDING), ("at", DESCENDING)],
+            name="ix_key_audit_user_at",
+        ),
+    ],
 }
 
 

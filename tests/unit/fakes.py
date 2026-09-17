@@ -72,6 +72,14 @@ class FakeCollection:
         if "$setOnInsert" in update:
             for key, value in update["$setOnInsert"].items():
                 doc.setdefault(key, value)
+        if "$unset" in update:
+            for key in update["$unset"]:
+                if "." in key:
+                    parent, leaf = key.rsplit(".", 1)
+                    if isinstance(doc.get(parent), dict):
+                        doc[parent].pop(leaf, None)
+                else:
+                    doc.pop(key, None)
         if "$inc" in update:
             for key, value in update["$inc"].items():
                 doc[key] = doc.get(key, 0) + value
@@ -90,7 +98,11 @@ class FakeCollection:
 
     async def insert_one(self, doc: dict[str, Any]) -> Any:
         for existing in self.docs.values():
-            if all(existing.get(f) == doc.get(f) for f in self._unique_fields):
+            # Unique check only when declared — all(()) is vacuously True and
+            # would reject every second insert into audit-style collections.
+            if self._unique_fields and all(
+                existing.get(f) == doc.get(f) for f in self._unique_fields
+            ):
                 raise DuplicateKeyError(f"unique index on {list(self._unique_fields)}")
         key = str(doc.get(self._id_field, self._next))
         self._next += 1

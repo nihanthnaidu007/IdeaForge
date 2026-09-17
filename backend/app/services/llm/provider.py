@@ -1,8 +1,8 @@
 """LLM provider seam and the fail-loud provider error taxonomy.
 
-The direct Anthropic/OpenAI SDK clients land in the next release PR; today the
-seam returns :class:`UnconfiguredLLM`, which fails loud (503) instead of
-pretending. What this module owns permanently:
+The direct Anthropic/OpenAI SDK clients (:mod:`app.services.llm.anthropic_client`,
+:mod:`app.services.llm.openai_client`) implement the ``LLMProvider`` protocol
+below. What this module owns permanently:
 
 - the ``LLMProvider`` protocol generation routes program against,
 - key resolution (user BYOK → server env default → typed MissingKeyError),
@@ -13,6 +13,7 @@ pretending. What this module owns permanently:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from app.config import Settings
@@ -53,6 +54,23 @@ class ProviderQuotaError(ProviderError):
     kind = "PROVIDER_QUOTA"
 
 
+class ProviderRateLimitedError(ProviderError):
+    """Provider rate limit (HTTP 429) — carries an optional Retry-After hint."""
+
+    status_code = 429
+    kind = "PROVIDER_RATE_LIMITED"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message, provider=provider)
+        self.retry_after = retry_after
+
+
 class ProviderUnavailableError(ProviderError):
     status_code = 503
     kind = "PROVIDER_UNAVAILABLE"
@@ -75,28 +93,39 @@ class LLMProvider(Protocol):
     ) -> str: ...
 
 
-class UnconfiguredLLM:
-    """Stub provider until the direct-SDK provider layer lands (next release PR).
+_JSON_RETRY_INSTRUCTION = (
+    "Your previous response was not valid JSON. Respond again with ONLY the JSON "
+    "value — no prose, no markdown fences. Do not change the data, only its shape."
+)
 
-    Fails loud with PROVIDER_UNAVAILABLE — it never returns synthetic content.
+
+async def complete_json_with_retry(
+    llm: LLMProvider,
+    *,
+    system: str,
+    prompt: str,
+    max_tokens: int = 2_000,
+    provider: str | None = None,
+) -> Any:
+    """Generate JSON via json_mode, retrying once if the output is unparseable.
+
+    Returns the parsed value or raises GenerationError — never returns canned
+    content (spec: fail-loud data honesty).
     """
-
-    def __init__(self, provider: str) -> None:
-        self.provider = provider
-
-    async def complete(
-        self,
-        *,
-        system: str,
-        prompt: str,
-        json_mode: bool = False,
-        max_tokens: int = 2_000,
-    ) -> str:
-        raise ProviderUnavailableError(
-            "LLM provider clients are not wired yet — the provider layer lands "
-            "in the next release PR.",
-            provider=self.provider,
-        )
+    response = await llm.complete(
+        system=system, prompt=prompt, json_mode=True, max_tokens=max_tokens
+    )
+    try:
+        return parse_json_output(response, provider=provider)
+    except GenerationError:
+        pass  # exactly one structured-output retry (spec), then fail loud
+    retry = await llm.complete(
+        system=system,
+        prompt=f"{prompt}\n\n{_JSON_RETRY_INSTRUCTION}",
+        json_mode=True,
+        max_tokens=max_tokens,
+    )
+    return parse_json_output(retry, provider=provider)
 
 
 async def resolve_user_key(
@@ -113,6 +142,16 @@ async def resolve_user_key(
         try:
             return vault.decrypt(user_id, provider, blob)
         except VaultDecryptionError as exc:
+            # Audit the use-failure before surfacing it — decrypt failures are
+            # exactly when a key may have been tampered with or orphaned.
+            await db.key_audit.insert_one(
+                {
+                    "user_id": user_id,
+                    "provider": provider,
+                    "event": "use_failure",
+                    "at": datetime.now(UTC),
+                }
+            )
             raise ProviderAuthError(
                 "Stored API key could not be decrypted — please re-save it in Settings.",
                 provider=provider,
