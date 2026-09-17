@@ -72,3 +72,9 @@ def test_server_default_keys_are_optional() -> None:
     assert settings.openai_api_key is None
     assert settings.anthropic_api_key is None
     assert settings.tavily_api_key is None
+
+
+def test_access_ttl_default_is_short_and_revocable() -> None:
+    """H2 guardrail: a days-scale access TTL is the defect this fixes."""
+    settings = make_settings()
+    assert settings.jwt_access_ttl_minutes == 60

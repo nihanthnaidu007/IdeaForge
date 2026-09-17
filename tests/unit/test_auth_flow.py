@@ -12,7 +12,6 @@ async def _register(client, email: str, password: str = "correct-horse-9"):
         "/api/auth/register", json={"email": email, "password": password, "name": "C"}
     )
 
-
 async def test_register_returns_tokens_and_user(client) -> None:
     response = await _register(client, "first@example.com")
     assert response.status_code == 200, response.text
@@ -78,6 +77,62 @@ async def test_me_requires_and_honors_token(client) -> None:
         "/api/auth/me", headers={"Authorization": "Bearer not-a-real-token"}
     )
     assert forged.status_code == 401
+
+
+async def test_logout_kills_outstanding_access_token(client) -> None:
+    """H2: revocation semantics — logout bumps token_version, so a stolen
+    bearer dies immediately instead of living out its TTL."""
+    register = await _register(client, "revoke@example.com")
+    token = register.json()["token"]
+    refresh_token = register.json()["refresh_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    assert (await client.get("/api/auth/me", headers=headers)).status_code == 200
+
+    logout = await client.post("/api/auth/logout", json={"refresh_token": refresh_token})
+    assert logout.status_code == 200
+
+    after = await client.get("/api/auth/me", headers=headers)
+    assert after.status_code == 401  # the access token is dead
+
+
+async def test_access_token_carries_version_and_ids(client) -> None:
+    register = await _register(client, "claims@example.com")
+    claims = jwt.decode(
+        register.json()["token"], make_settings().jwt_secret, algorithms=["HS256"]
+    )
+    assert claims["ver"] == 0
+    assert claims["iat"]
+    assert claims["jti"]
+
+    # A token whose version lags the users doc is revoked (spec mechanism).
+    stale = jwt.encode(
+        {**claims, "ver": 5},
+        make_settings().jwt_secret,
+        algorithm="HS256",
+    )
+    response = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {stale}"}
+    )
+    assert response.status_code == 401
+
+
+async def test_login_after_logout_mints_fresh_version(client) -> None:
+    """The revocation kill-switch must not lock the legitimate user out."""
+    register = await _register(client, "fresh@example.com")
+    await client.post(
+        "/api/auth/logout",
+        json={"refresh_token": register.json()["refresh_token"]},
+    )
+    relogin = await client.post(
+        "/api/auth/login",
+        json={"email": "fresh@example.com", "password": "correct-horse-9"},
+    )
+    assert relogin.status_code == 200
+    me = await client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {relogin.json()['token']}"},
+    )
+    assert me.status_code == 200
 
 
 async def test_refresh_rotates_and_rejects_reuse(client) -> None:

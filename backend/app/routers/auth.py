@@ -11,6 +11,7 @@ Hardening vs the scaffold:
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -35,6 +36,8 @@ router = APIRouter(prefix="/auth")
 
 REFRESH_TOKEN_BYTES = 48
 
+logger = logging.getLogger(__name__)
+
 
 def _hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
@@ -48,12 +51,20 @@ def _hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _create_access_token(user_id: str, email: str, settings: Settings) -> str:
+def _create_access_token(
+    user_id: str, email: str, token_version: int, settings: Settings
+) -> str:
+    now = datetime.now(UTC)
     payload = {
         "user_id": user_id,
         "email": email,
         "type": "access",
-        "exp": datetime.now(UTC) + timedelta(days=settings.jwt_access_ttl_days),
+        "iat": now,
+        "jti": uuid.uuid4().hex,  # per-token id (L3): log lines can name one
+        # H2: the spec's revocation mechanism — get_current_user compares this
+        # against the users doc and rejects stale versions.
+        "ver": int(token_version),
+        "exp": now + timedelta(minutes=settings.jwt_access_ttl_minutes),
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
@@ -83,10 +94,21 @@ def _public_user(user: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _bump_token_version(db: Any, user_id: str) -> None:
+    """H2: invalidate every outstanding access token for the user.
+
+    get_current_user rejects any token whose ``ver`` claim lags the users doc,
+    so one increment kills all previously issued access tokens.
+    """
+    await db.users.update_one({"id": user_id}, {"$inc": {"token_version": 1}})
+
+
 async def _issue_tokens(
     db: Any, user: dict[str, Any], settings: Settings
 ) -> TokenResponse:
-    access = _create_access_token(user["id"], user["email"], settings)
+    access = _create_access_token(
+        user["id"], user["email"], user.get("token_version", 0), settings
+    )
     raw_refresh, refresh_doc = _new_refresh_token_doc(user["id"], settings)
     await _store_refresh_token(db, refresh_doc)
     return TokenResponse(
@@ -111,6 +133,7 @@ async def register(
         "password": _hash_password(data.password),
         "name": data.name or data.email.split("@")[0],
         "created_at": datetime.now(UTC).isoformat(),
+        "token_version": 0,  # H2: bumped on logout / compromise response
     }
     try:
         await db.users.insert_one(user_doc)
@@ -185,8 +208,15 @@ async def logout(
     data: LogoutRequest,
     db: Any = Depends(get_db),
 ) -> dict[str, str]:
-    await db.refresh_tokens.update_one(
-        {"token_hash": _hash_refresh_token(data.refresh_token)},
-        {"$set": {"revoked": True}},
+    token_hash = _hash_refresh_token(data.refresh_token)
+    record = await db.refresh_tokens.find_one(
+        {"token_hash": token_hash}, {"_id": 0, "user_id": 1}
     )
+    if record:
+        await db.refresh_tokens.update_one(
+            {"token_hash": token_hash}, {"$set": {"revoked": True}}
+        )
+        # H2: logout must kill live access tokens too, not only the refresh
+        # token — otherwise a stolen bearer stays valid until its (short) TTL.
+        await _bump_token_version(db, record["user_id"])
     return {"message": "Logged out"}
