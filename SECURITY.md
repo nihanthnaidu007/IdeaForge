@@ -1,5 +1,16 @@
 # Security Policy
 
+## Build status
+
+This policy describes the completed production rebuild on the
+[`release/production-rebuild`](https://github.com/nihanthnaidu007/IdeaForge/tree/release/production-rebuild)
+branch; the key-handling and encryption sections below are the target state the build is
+checked against, not today's tree. Right now that branch has repository hygiene, a CI
+scaffold, the Vite frontend, the backend app package, and documentation — the provider
+layer with the encrypted BYOK vault and Docker/Compose deployment land in upcoming PRs.
+Follow
+[release PR #2](https://github.com/nihanthnaidu007/IdeaForge/pull/2) for live progress.
+
 ## Supported reporting channel
 
 **Do not open a public issue for a security vulnerability.**
