@@ -15,38 +15,8 @@ import pytest
 from app.routers import posts as posts_module
 from app.routers import voice as voice_module
 
-
-class _RecordingLLM:
-    """Stub LLMProvider: records every complete() call, replays responses."""
-
-    def __init__(self, responses: list[str]) -> None:
-        self._responses = list(responses)
-        self.calls: list[dict[str, Any]] = []
-
-    async def complete(
-        self,
-        *,
-        system: str,
-        prompt: str,
-        json_mode: bool = False,
-        max_tokens: int = 2_000,
-    ) -> str:
-        self.calls.append(
-            {"system": system, "prompt": prompt, "json_mode": json_mode}
-        )
-        return self._responses.pop(0)
-
-
-def _stub_get_llm(responses: list[str], *, capture: list[_RecordingLLM] | None = None):
-    async def _get_llm(
-        user_id: str, provider: str, *, db: Any, vault: Any, settings: Any
-    ) -> _RecordingLLM:
-        llm = _RecordingLLM(responses)
-        if capture is not None:
-            capture.append(llm)
-        return llm
-
-    return _get_llm
+from tests.unit.fakes import RecordingLLM as _RecordingLLM
+from tests.unit.fakes import stub_get_llm as _stub_get_llm
 
 
 def _valid_profile(sample_count: int = 3) -> dict[str, Any]:

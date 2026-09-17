@@ -17,6 +17,7 @@ class GeneratePostRequest(BaseModel):
     tone: str = "professional"
     custom_instructions: str | None = ""
     insights: dict | None = None
+    hook_id: str | None = None
 
 
 class TweakPostRequest(BaseModel):
@@ -24,6 +25,17 @@ class TweakPostRequest(BaseModel):
     tweak_instruction: str
     idea: dict
     format: str
+
+
+class SwapHookRequest(BaseModel):
+    """Hook-swap: rewrite the opening line onto a different pattern, keep the
+    rest of the draft untouched (craft pack §4.3)."""
+
+    original_post: str = Field(min_length=1, max_length=20_000)
+    hook_id: str
+    idea: dict
+    format: str
+    tone: str = "professional"
 
 
 class PostResponse(BaseModel):

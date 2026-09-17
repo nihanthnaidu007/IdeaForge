@@ -20,6 +20,7 @@ from app.logging_setup import configure_logging
 from app.middleware import AuthRateLimitMiddleware, RequestContextMiddleware
 from app.rate_limit import SlidingWindowLimiter
 from app.routers import api_router, health
+from app.services.hooks import seed_hooks
 from app.services.reminders import ReminderWorker
 from app.services.vault import build_vault
 
@@ -81,6 +82,7 @@ def _build_lifespan(settings: Settings, db: object | None):
         app.state.reminders = worker
 
         await ensure_indexes(app.state.db)
+        await seed_hooks(app.state.db)  # idempotent Hook Bank catalog seed
         worker.start()
         yield
         await worker.stop()

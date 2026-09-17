@@ -27,12 +27,14 @@ from app.deps import get_current_user, get_db, get_llm, get_settings_dep, get_va
 from app.models.posts import (
     GeneratePostRequest,
     GenerateVariantsRequest,
+    SwapHookRequest,
     TweakPostRequest,
     TweakVariantRequest,
 )
 from app.models.research import TrendItem
 from app.routers.voice import get_active_voice_profile
 from app.services.cost_hints import build_cost_hint
+from app.services.hooks import build_hook_block
 from app.services.llm.provider import (
     GenerationError,
     GenerationRefusedError,
@@ -83,6 +85,23 @@ async def _voice_block(db: Any, user_id: str) -> str:
     if profile is None:
         return voice_fallback_block()
     return build_voice_block(profile)
+
+
+async def _hook_section(db: Any, user_id: str, hook_id: str | None) -> str:
+    """The HOOK block when the user picked a pattern in the Hook Picker.
+
+    Builtin rows are shared catalog patterns; user hooks load only when owned
+    by the requester. An unknown id is a 404, not a silently dropped block —
+    the user explicitly asked for this pattern.
+    """
+    if not hook_id:
+        return ""
+    hook = await db.hooks.find_one({"id": hook_id})
+    if hook is None or (
+        not hook.get("is_builtin") and hook.get("user_id") != user_id
+    ):
+        raise HTTPException(status_code=404, detail="Hook not found.")
+    return build_hook_block(hook)
 
 
 def _insight_evidence_gaps(insights: dict[str, Any] | None) -> list[str]:
@@ -190,6 +209,7 @@ async def _run_variant_generation(
     trend_block = build_trend_block(
         data.trends, evidence_gaps=_insight_evidence_gaps(data.insights)
     )
+    hook_section = await _hook_section(db, user_id, data.hook_id)
     format_contract = FORMAT_CONTRACTS[format_code]
     briefs = assign_briefs(format_code, 3, generation_round)
 
@@ -206,6 +226,7 @@ async def _run_variant_generation(
             variant_block=brief_block(brief),
             trend_block=trend_block,
             voice_block=voice_block,
+            hook_block=hook_section,
         )
         try:
             parsed = await complete_json_with_retry(
@@ -604,3 +625,34 @@ async def tweak_post(
         output_tokens=estimate_output_tokens(format_code),
     )
     return {"post": draft["post_text"], "cost_hint": cost_hint}
+
+
+@router.post("/swap-hook")
+async def swap_hook(
+    data: SwapHookRequest,
+    current_user: dict[str, str] = Depends(get_current_user),
+    db: Any = Depends(get_db),
+    vault: Any = Depends(get_vault),
+    settings: Any = Depends(get_settings_dep),
+) -> dict[str, str]:
+    """Hook-swap on an existing draft: the picked pattern rewrites ONLY the
+    opening line; the rest of the post stays byte-for-byte the user's draft
+    (craft pack §4.3). One LLM call, user's BYOK credits."""
+    llm = await get_llm(
+        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+    )
+    hook_section = await _hook_section(db, current_user["user_id"], data.hook_id)
+    voice_block = await _voice_block(db, current_user["user_id"])
+    prompt = (
+        f"Here is the current LinkedIn post:\n\n{data.original_post}\n\n"
+        "Rewrite it so the OPENING LINE follows the hook pattern below. "
+        "Keep every other line, the structure, and the core message about "
+        f"\"{data.idea.get('title', '')}\" unchanged.\n\n"
+        f"Tone: {data.tone}\n"
+        f"Format: {data.format}\n"
+        f"{hook_section}\n"
+        f"{voice_block}\n\n"
+        "Write the updated post now."
+    )
+    response = await llm.complete(system=MASTER_SYSTEM_PROMPT, prompt=prompt)
+    return {"post": response.strip(), "hook_pattern_id": data.hook_id}
