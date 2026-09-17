@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // Vite replaces CRA/craco: the `@/` alias carries over from craco's webpack
-// alias, and the Emergent withVisualEdits wrapper is intentionally dropped.
+// alias; the scaffold visual-edit wrapper is intentionally dropped.
 export default defineConfig({
   plugins: [react()],
   resolve: {
