@@ -1,10 +1,9 @@
 """Repo-hygiene smoke tests for the production rebuild.
 
-The backend app package does not exist yet (the restructure lands in a sibling
-PR), so this suite starts as the guardrail for the scaffold purge and grows as
-the backend does. For every file in the working tree it asserts:
+The backend restructure has landed, so this suite guards the full tree: for
+every file in the working tree it asserts:
 
-- no scaffold artifact survived the purge;
+- no scaffold artifact survived the purge (including the deleted backend/server.py);
 - no committed provider-key-shaped secrets anywhere;
 - no Emergent/scaffold strings outside paths owned by sibling PRs.
 
@@ -18,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Scaffold artifacts that must stay gone (spec: repo root carries only product files).
 GONE_ARTIFACTS = (
+    "backend/server.py",
     "backend_test.py",
     ".gitconfig",
     ".emergent",
@@ -48,8 +48,6 @@ SCAFFOLD_RE = re.compile(r"emergent|Universal Key", re.IGNORECASE)
 
 # Paths sibling rebuild PRs own; each PR purges its own references.
 SIBLING_OWNED_EXACT = (
-    "backend/server.py",
-    "backend/requirements.txt",
     "frontend/package.json",
     "frontend/package-lock.json",
 )

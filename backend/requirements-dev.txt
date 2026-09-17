@@ -1,0 +1,5 @@
+# IdeaForge backend dev/test tools.
+
+pytest==9.0.2
+pytest-asyncio==1.4.0
+ruff==0.16.8

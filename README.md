@@ -37,7 +37,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # then edit values — see .env.example for every variable
-uvicorn server:app --reload --port 8001
+uvicorn app.main:app --reload --port 8001
 ```
 
 The API serves `http://127.0.0.1:8001/api/` — `GET /api/` returns
