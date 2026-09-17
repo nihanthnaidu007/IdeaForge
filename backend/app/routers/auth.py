@@ -69,11 +69,14 @@ def _create_access_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
-def _new_refresh_token_doc(user_id: str, settings: Settings) -> tuple[str, dict[str, Any]]:
+def _new_refresh_token_doc(
+    user_id: str, settings: Settings, family_id: str | None = None
+) -> tuple[str, dict[str, Any]]:
     raw = secrets.token_urlsafe(REFRESH_TOKEN_BYTES)
     doc = {
         "token_hash": _hash_refresh_token(raw),
         "user_id": user_id,
+        "family_id": family_id or uuid.uuid4().hex,  # M1: rotation keeps the family
         "created_at": datetime.now(UTC),
         "expires_at": datetime.now(UTC)
         + timedelta(days=settings.jwt_refresh_ttl_days),
@@ -103,13 +106,30 @@ async def _bump_token_version(db: Any, user_id: str) -> None:
     await db.users.update_one({"id": user_id}, {"$inc": {"token_version": 1}})
 
 
+async def _revoke_family(db: Any, record: dict[str, Any]) -> None:
+    """M1: reuse of a dead refresh token is a theft signal — kill the family.
+
+    Rotation means a family has one live token at a time; a revoked or expired
+    token being presented again means the token was copied (OAuth BCP response:
+    revoke every token in the family and invalidate outstanding access tokens
+    via token_version). Legacy rows without a family fall back to user-wide.
+    """
+    family_id = record.get("family_id")
+    query = {"family_id": family_id} if family_id else {"user_id": record["user_id"]}
+    await db.refresh_tokens.update_many(query, {"$set": {"revoked": True}})
+    await _bump_token_version(db, record["user_id"])
+    logger.warning(
+        "refresh token reuse detected — family revoked (user %s)", record["user_id"]
+    )
+
+
 async def _issue_tokens(
-    db: Any, user: dict[str, Any], settings: Settings
+    db: Any, user: dict[str, Any], settings: Settings, family_id: str | None = None
 ) -> TokenResponse:
     access = _create_access_token(
         user["id"], user["email"], user.get("token_version", 0), settings
     )
-    raw_refresh, refresh_doc = _new_refresh_token_doc(user["id"], settings)
+    raw_refresh, refresh_doc = _new_refresh_token_doc(user["id"], settings, family_id)
     await _store_refresh_token(db, refresh_doc)
     return TokenResponse(
         token=access, user=_public_user(user), refresh_token=raw_refresh
@@ -179,28 +199,31 @@ async def refresh(
 ) -> TokenResponse:
     token_hash = _hash_refresh_token(data.refresh_token)
     record = await db.refresh_tokens.find_one({"token_hash": token_hash}, {"_id": 0})
-    if not record or record.get("revoked"):
+    if not record:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     expires_at = record.get("expires_at")
-    now = datetime.now(UTC)
+    expired = False
     if expires_at is not None:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=UTC)
-        if expires_at <= now:
-            raise HTTPException(
-                status_code=401, detail="Invalid or expired refresh token"
-            )
+        expired = expires_at <= datetime.now(UTC)
+
+    # M1: presenting an already-rotated/expired token means the live token was
+    # copied and used first — treat it as theft, not staleness.
+    if record.get("revoked") or expired:
+        await _revoke_family(db, record)
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     user = await db.users.find_one({"id": record["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    # Rotation: the presented token is single-use.
+    # Rotation: the presented token is single-use; its family carries forward.
     await db.refresh_tokens.update_one(
         {"token_hash": token_hash}, {"$set": {"revoked": True}}
     )
-    return await _issue_tokens(db, user, settings)
+    return await _issue_tokens(db, user, settings, record.get("family_id"))
 
 
 @router.post("/logout")

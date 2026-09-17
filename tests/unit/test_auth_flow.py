@@ -150,6 +150,54 @@ async def test_refresh_rotates_and_rejects_reuse(client) -> None:
     assert reuse.status_code == 401
 
 
+async def test_refresh_reuse_revokes_whole_family_and_access_tokens(client) -> None:
+    """M1: replaying a rotated refresh token means the live token was copied
+    and used first — the whole token family dies and outstanding access
+    tokens are revoked, not just the replayed one."""
+    register = await _register(client, "family@example.com")
+    stolen_refresh = register.json()["refresh_token"]
+    victim_token = register.json()["token"]
+
+    # The thief presents the stolen refresh token first and gets a live session.
+    thief = await client.post(
+        "/api/auth/refresh", json={"refresh_token": stolen_refresh}
+    )
+    assert thief.status_code == 200
+    thief_token = thief.json()["token"]
+    thief_refresh = thief.json()["refresh_token"]
+
+    # The victim's replay of the already-rotated token is the theft signal.
+    reuse = await client.post("/api/auth/refresh", json={"refresh_token": stolen_refresh})
+    assert reuse.status_code == 401
+
+    # The thief's session is dead: their refresh 401s and their fresh access
+    # token no longer authenticates (token_version bumped on detection).
+    replay_thief = await client.post(
+        "/api/auth/refresh", json={"refresh_token": thief_refresh}
+    )
+    assert replay_thief.status_code == 401
+    me_thief = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {thief_token}"}
+    )
+    assert me_thief.status_code == 401
+    me_victim = await client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {victim_token}"}
+    )
+    assert me_victim.status_code == 401
+
+    # A fresh login starts a new family and keeps working — the blast radius
+    # is the compromised family, not the account.
+    relogin = await client.post(
+        "/api/auth/login",
+        json={"email": "family@example.com", "password": "correct-horse-9"},
+    )
+    assert relogin.status_code == 200
+    new_family = await client.post(
+        "/api/auth/refresh", json={"refresh_token": relogin.json()["refresh_token"]}
+    )
+    assert new_family.status_code == 200
+
+
 async def test_logout_revokes_refresh_token(client) -> None:
     register = await _register(client, "bye@example.com")
     refresh_token = register.json()["refresh_token"]
