@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Full backend requirements land with the app-restructure PR (the current
+      # scaffold tree pins an uninstallable scaffold package); the smoke suite is
+      # stdlib-only, so CI stays fast and honest until then.
+      - name: Install lint + test tools
+        run: pip install ruff==0.16.8 pytest
+
+      # Scoped to tests/ while backend/server.py is still scaffold-owned;
+      # the restructure PR extends this to the backend package.
+      - name: Ruff
+        run: ruff check tests/
+
+      - name: Pytest
+        run: pytest tests/ -q
+
+  frontend:
+    name: Frontend (scaffold gate + npm ci + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fails on committed secrets or scaffold strings outside
+      # sibling-PR-owned paths. Runs first so violations surface in seconds.
+      - name: Secrets & scaffold grep gate
+        run: bash scripts/ci/scaffold-gate.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # .npmrc sets legacy-peer-deps for the legacy CRA tree (react 19 +
+      # react-day-picker 8 peer conflict); the Vite migration removes it.
+      - name: Install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build
+        working-directory: frontend
+        # CI=false: CRA escalates every lint warning to an error when CI=true,
+        # and the pre-existing react-hooks/exhaustive-deps warnings live in
+        # src/pages files owned by sibling rebuild PRs (fixed by the Vite
+        # migration). The build still fails on real errors.
+        env:
+          CI: false
+        run: npm run build
