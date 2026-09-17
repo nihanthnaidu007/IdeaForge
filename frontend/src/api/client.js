@@ -114,14 +114,50 @@ export function normalizeApiError(error) {
   });
 }
 
-// 401 on an authenticated request means the token is dead (expired or
-// revoked). Handlers registered here react — AuthProvider clears session
-// state. When the backend ships refresh-token rotation, a refresh-and-retry
-// step slots in ahead of this callback.
+// 401 on an authenticated request triggers one single-flight refresh attempt
+// (the backend's refresh token is single-use, so concurrent 401s must share
+// one refresh call), then retries the original request. Auth endpoints are
+// exempt — a 401 from login/register/refresh/logout is a real credential
+// failure, not a stale access token.
 let unauthorizedHandler = null;
 export const onUnauthorized = (handler) => {
   unauthorizedHandler = handler;
 };
+
+const REFRESH_STORAGE_KEY = "ideaforge_refresh";
+const AUTH_URLS = ["/auth/login", "/auth/register", "/auth/refresh", "/auth/logout"];
+
+let refreshInFlight = null;
+
+function refreshTokens() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    const refreshToken = localStorage.getItem(REFRESH_STORAGE_KEY);
+    if (!refreshToken) {
+      throw new ApiError({
+        status: 401,
+        kind: ERROR_KINDS.AUTH,
+        message: FALLBACK_MESSAGE[ERROR_KINDS.AUTH],
+      });
+    }
+    // Bare axios: the client's own interceptors would recurse on this call.
+    const response = await axios.post(`${API}/auth/refresh`, { refresh_token: refreshToken });
+    const { token, refresh_token: nextRefresh } = response.data;
+    if (!token || !nextRefresh) {
+      throw new ApiError({
+        status: 401,
+        kind: ERROR_KINDS.AUTH,
+        message: FALLBACK_MESSAGE[ERROR_KINDS.AUTH],
+      });
+    }
+    localStorage.setItem("ideaforge_token", token);
+    localStorage.setItem(REFRESH_STORAGE_KEY, nextRefresh);
+    return token;
+  })().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
 
 const client = axios.create({ baseURL: API });
 
@@ -133,8 +169,30 @@ client.interceptors.request.use((config) => {
 
 client.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const normalized = normalizeApiError(error);
+    const original = error?.config ?? {};
+    const isAuthUrl = AUTH_URLS.some((p) => original.url?.includes(p));
+
+    // Session expired: refresh once (single-flight), then retry. A failed
+    // refresh means the session is truly dead — notify handlers and reject.
+    if (
+      normalized.status === 401 &&
+      !isAuthUrl &&
+      !original._refreshRetried
+    ) {
+      try {
+        const token = await refreshTokens();
+        return client.request({
+          ...original,
+          headers: { ...original.headers, Authorization: `Bearer ${token}` },
+          _refreshRetried: true,
+        });
+      } catch {
+        // Refresh failed — fall through to the unauthorized notification.
+      }
+    }
+
     if (normalized.status === 401 && unauthorizedHandler) unauthorizedHandler(normalized);
     return Promise.reject(normalized);
   }

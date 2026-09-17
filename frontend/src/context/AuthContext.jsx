@@ -33,6 +33,7 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const data = await api.post("/auth/login", { email, password });
     localStorage.setItem("ideaforge_token", data.token);
+    if (data.refresh_token) localStorage.setItem("ideaforge_refresh", data.refresh_token);
     setToken(data.token);
     setUser(data.user);
     return data;
@@ -41,15 +42,26 @@ export const AuthProvider = ({ children }) => {
   const register = async (email, password, name) => {
     const data = await api.post("/auth/register", { email, password, name });
     localStorage.setItem("ideaforge_token", data.token);
+    if (data.refresh_token) localStorage.setItem("ideaforge_refresh", data.refresh_token);
     setToken(data.token);
     setUser(data.user);
     return data;
   };
 
+  // Revoke the server-side refresh token so the session is dead even if the
+  // JWT outlives this device. Failure is non-blocking (the token still
+  // expires by TTL) but is surfaced, not swallowed.
   const logout = useCallback(() => {
+    const refreshToken = localStorage.getItem("ideaforge_refresh");
     localStorage.removeItem("ideaforge_token");
+    localStorage.removeItem("ideaforge_refresh");
     setToken(null);
     setUser(null);
+    if (refreshToken) {
+      api.post("/auth/logout", { refresh_token: refreshToken }).catch((error) => {
+        console.warn("Refresh token revocation failed (expires by TTL anyway):", error?.message);
+      });
+    }
   }, []);
 
   // A 401 from any authenticated request means the session token is dead.
