@@ -1,96 +1,127 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { useAuth, API } from "../App";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import Navbar from "@/components/layout/Navbar";
+import SkipLink from "@/components/layout/SkipLink";
+import { ErrorState } from "@/components/states/AsyncStates";
+import { api } from "@/api/client";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
-import {
-  Sparkles,
-  ArrowLeft,
-  Eye,
-  EyeOff,
-  Save,
-  Check,
-  X,
-  AlertCircle,
-} from "lucide-react";
+} from "@/components/ui/select";
+import { AlertCircle, Check, X, Eye, EyeOff, Loader2 } from "lucide-react";
+import { NICHES, TONES } from "@/lib/constants";
 
-const NICHES = ["AI", "Web Dev", "Data Science", "Startups", "Productivity"];
-const TONES = ["Professional", "Casual", "Bold"];
+// §5.2 card contract: connected cards show the Connected chip + masked hint
+// and never re-expose the key; "Replace" is the only path to a new value.
+// §5.3 gives each provider's setup line verbatim; PR #9 shipped
+// POST /keys/{provider}/test, so the one-click validation renders for real.
+const KEY_PROVIDERS = [
+  {
+    id: "tavily",
+    name: "Tavily",
+    label: "Tavily API key",
+    placeholder: "tvly-…",
+    purpose: "Tavily powers Trend Radar. Create a key in your Tavily account console — research bills only to your Tavily plan.",
+    link: "https://tavily.com",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    label: "Anthropic API key",
+    placeholder: "sk-ant-…",
+    purpose: "Anthropic is one of the two drafting engines. Create a key in the Anthropic Console — drafts bill only to your Anthropic account.",
+    link: "https://console.anthropic.com",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    label: "OpenAI API key",
+    placeholder: "sk-…",
+    purpose: "OpenAI is one of the two drafting engines. Create a key at platform.openai.com — drafts bill only to your OpenAI account.",
+    link: "https://platform.openai.com",
+  },
+];
 
 const Settings = () => {
-  const navigate = useNavigate();
-  const { token } = useAuth();
+  useAuth(); // auth guard is handled by ProtectedRoute
   const [preferences, setPreferences] = useState({
     default_niche: "AI",
     default_tone: "professional",
   });
-  const [apiKeys, setApiKeys] = useState({
-    tavily: "",
-    anthropic: "",
-    openai: "",
+  const [keyHints, setKeyHints] = useState({
+    tavily: null,
+    anthropic: null,
+    openai: null,
   });
+  const [apiKeys, setApiKeys] = useState({ tavily: "", anthropic: "", openai: "" });
   const [keyStatus, setKeyStatus] = useState({
     has_tavily_key: false,
     has_anthropic_key: false,
     has_openai_key: false,
   });
-  const [showKeys, setShowKeys] = useState({
-    tavily: false,
-    anthropic: false,
-    openai: false,
-  });
+  const [showKeys, setShowKeys] = useState({ tavily: false, anthropic: false, openai: false });
+  const [replacing, setReplacing] = useState({ tavily: false, anthropic: false, openai: false });
+  const [status, setStatus] = useState("loading"); // loading | error | ready
+  const [loadError, setLoadError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState(null);
+  const [testState, setTestState] = useState({});
 
-  const headers = { Authorization: `Bearer ${token}` };
+  const fetchPreferences = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const data = await api.get("/preferences");
+      setPreferences({
+        default_niche: data.default_niche || "AI",
+        default_tone: data.default_tone || "professional",
+      });
+      setKeyStatus({
+        has_tavily_key: data.has_tavily_key || false,
+        has_anthropic_key: data.has_anthropic_key || false,
+        has_openai_key: data.has_openai_key || false,
+      });
+      // key_hints is PR #9's masked-hint map — the ONLY key-derived data any
+      // response carries. Never fabricate a **** when a provider is connected
+      // but unhinted (pre-#9 documents have no hint until re-saved).
+      const hints = data.key_hints ?? {};
+      setKeyHints({
+        tavily: hints.tavily ?? null,
+        anthropic: hints.anthropic ?? null,
+        openai: hints.openai ?? null,
+      });
+      setStatus("ready");
+    } catch (error) {
+      setLoadError(error);
+      setStatus("error");
+    }
+  }, []);
 
   useEffect(() => {
     fetchPreferences();
-  }, []);
-
-  const fetchPreferences = async () => {
-    try {
-      const res = await axios.get(`${API}/preferences`, { headers });
-      setPreferences({
-        default_niche: res.data.default_niche || "AI",
-        default_tone: res.data.default_tone || "professional",
-      });
-      setKeyStatus({
-        has_tavily_key: res.data.has_tavily_key || false,
-        has_anthropic_key: res.data.has_anthropic_key || false,
-        has_openai_key: res.data.has_openai_key || false,
-      });
-    } catch (error) {
-      console.error("Failed to load preferences");
-    }
-  };
+  }, [fetchPreferences]);
 
   const savePreferences = async () => {
     setLoading(true);
     try {
-      await axios.post(`${API}/preferences`, {
+      await api.post("/preferences", {
         default_tone: preferences.default_tone,
         default_niche: preferences.default_niche,
-      }, { headers });
-      toast.success("Preferences saved!");
+      });
+      toast.success("Preferences saved");
     } catch (error) {
-      toast.error("Failed to save preferences");
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const saveApiKey = async (keyType) => {
-    const keyValue = apiKeys[keyType];
     const fieldMap = {
       tavily: "tavily_api_key",
       anthropic: "anthropic_api_key",
@@ -104,18 +135,17 @@ const Settings = () => {
 
     setSavingKey(keyType);
     try {
-      await axios.post(`${API}/preferences`, {
-        [fieldMap[keyType]]: keyValue,
-      }, { headers });
-      
-      setKeyStatus(prev => ({
+      await api.post("/preferences", { [fieldMap[keyType]]: apiKeys[keyType] });
+
+      setKeyStatus((prev) => ({
         ...prev,
-        [statusMap[keyType]]: !!keyValue,
+        [statusMap[keyType]]: !!apiKeys[keyType],
       }));
-      setApiKeys(prev => ({ ...prev, [keyType]: "" }));
-      toast.success(`${keyType.charAt(0).toUpperCase() + keyType.slice(1)} API key ${keyValue ? "saved" : "removed"}!`);
+      setApiKeys((prev) => ({ ...prev, [keyType]: "" }));
+      setReplacing((prev) => ({ ...prev, [keyType]: false }));
+      toast.success("Key saved");
     } catch (error) {
-      toast.error(`Failed to save ${keyType} API key`);
+      toast.error(error.message);
     } finally {
       setSavingKey(null);
     }
@@ -135,218 +165,367 @@ const Settings = () => {
 
     setSavingKey(keyType);
     try {
-      await axios.post(`${API}/preferences`, {
-        [fieldMap[keyType]]: "",
-      }, { headers });
-      
-      setKeyStatus(prev => ({
+      await api.post("/preferences", { [fieldMap[keyType]]: "" });
+
+      setKeyStatus((prev) => ({
         ...prev,
         [statusMap[keyType]]: false,
       }));
-      toast.success(`${keyType.charAt(0).toUpperCase() + keyType.slice(1)} API key removed`);
+      setKeyHints((prev) => ({ ...prev, [keyType]: null }));
+      toast.success("Key removed");
     } catch (error) {
-      toast.error(`Failed to remove ${keyType} API key`);
+      toast.error(error.message);
     } finally {
       setSavingKey(null);
     }
   };
 
   const toggleShowKey = (key) => {
-    setShowKeys(prev => ({ ...prev, [key]: !prev[key] }));
+    setShowKeys((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  // §5.3 state machine: idle → testing → passed | failed. The test is one
+  // real, cheap provider call — a pass means the key authenticates, and the
+  // copy says "accepted", never "unlimited".
+  const testKey = async (providerId) => {
+    setTestState((prev) => ({ ...prev, [providerId]: { phase: "testing" } }));
+    try {
+      await api.post(`/keys/${providerId}/test`);
+      setTestState((prev) => ({ ...prev, [providerId]: { phase: "passed" } }));
+    } catch (error) {
+      setTestState((prev) => ({
+        ...prev,
+        [providerId]: {
+          phase: "failed",
+          kind: error.kind,
+          retryAfter: error.retryAfter,
+          message: error.message,
+        },
+      }));
+    }
+  };
+
+  // §5.3's per-kind failed lines. Anything off the table falls back to the
+  // ApiError's own honest copy rather than a generic "try again".
+  const testFailureLine = (providerName, failure) => {
+    switch (failure.kind) {
+      case "auth":
+        return "Key rejected — check for a paste error or a revoked key, then re-enter it.";
+      case "quota":
+        return "Key is live, but the account is out of credit or over quota.";
+      case "rate_limited":
+        return failure.retryAfter
+          ? `${providerName} is rate-limiting the test. Wait ${failure.retryAfter}s and test again.`
+          : `${providerName} is rate-limiting the test. Wait a moment and test again.`;
+      case "network":
+      case "unavailable":
+        return `Couldn't reach ${providerName} to test. Your key is saved — try again in a minute.`;
+      default:
+        return failure.message;
+    }
+  };
+
+  const connected = (id) => keyStatus[`has_${id}_key`];
 
   return (
     <div className="min-h-screen bg-void">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-void/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/dashboard")}
-              data-testid="back-btn"
-              className="p-2 text-white/60 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-lime" />
-              <span className="font-heading font-bold text-lg text-white">Settings</span>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <SkipLink />
+      <Navbar title="Settings" backTo="/dashboard" />
 
       {/* Main Content */}
-      <main className="pt-20 pb-12 px-6">
+      <main id="main-content" className="pt-20 pb-12 px-6">
         <div className="max-w-2xl mx-auto space-y-8">
-          {/* Info Banner */}
-          <div className="glass-card rounded-xl p-4 border-l-4 border-lime">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-lime flex-shrink-0 mt-0.5" />
-              <div className="text-sm">
-                <p className="text-white font-medium mb-1">API Key Priority</p>
-                <p className="text-white/60">
-                  Your own API keys (set below) are used first. If not configured, the app falls back to the Universal Key. 
-                  If that's also unavailable or out of balance, you'll see an error message.
-                </p>
-              </div>
+          {status === "loading" ? (
+            <div className="glass-card rounded-xl p-6 space-y-4" data-testid="settings-skeleton" aria-busy="true">
+              <p className="text-zinc-400 text-sm">Loading your settings…</p>
+              <div className="animate-pulse bg-white/5 rounded-lg h-6 w-1/3" />
+              <div className="animate-pulse bg-white/5 rounded-lg h-12 w-full" />
+              <div className="animate-pulse bg-white/5 rounded-lg h-12 w-full" />
+              <div className="animate-pulse bg-white/5 rounded-lg h-12 w-full" />
             </div>
-          </div>
-
-          {/* API Keys Section */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="font-heading text-xl font-semibold text-white mb-2">
-              API Configuration
-            </h2>
-            <p className="text-white/50 text-sm mb-6">
-              Add your own API keys to use instead of the Universal Key. Keys are stored securely.
-            </p>
-
-            <div className="space-y-6">
-              {[
-                { 
-                  id: "tavily", 
-                  label: "Tavily API Key",
-                  description: "For live trend research from Reddit, Google Trends, and news",
-                  link: "https://tavily.com"
-                },
-                { 
-                  id: "anthropic", 
-                  label: "Anthropic API Key (Claude)",
-                  description: "For AI-powered idea generation and audience insights",
-                  link: "https://console.anthropic.com"
-                },
-                { 
-                  id: "openai", 
-                  label: "OpenAI API Key (GPT)",
-                  description: "For writing LinkedIn posts",
-                  link: "https://platform.openai.com"
-                },
-              ].map((api) => (
-                <div key={api.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm text-white/80">{api.label}</label>
-                    {keyStatus[`has_${api.id}_key`] ? (
-                      <span className="flex items-center gap-1 text-xs text-rating-high">
-                        <Check className="w-3 h-3" />
-                        Configured
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-white/40">
-                        <X className="w-3 h-3" />
-                        Using fallback
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-white/40 mb-2">
-                    {api.description} · <a href={api.link} target="_blank" rel="noopener noreferrer" className="text-lime hover:underline">Get key</a>
-                  </p>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Input
-                        type={showKeys[api.id] ? "text" : "password"}
-                        value={apiKeys[api.id]}
-                        onChange={(e) => setApiKeys(prev => ({ ...prev, [api.id]: e.target.value }))}
-                        data-testid={`${api.id}-key-input`}
-                        placeholder={keyStatus[`has_${api.id}_key`] ? "••••••••••••••• (key saved)" : "Enter your API key..."}
-                        className="bg-void border-white/10 text-white pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => toggleShowKey(api.id)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
-                      >
-                        {showKeys[api.id] ? (
-                          <EyeOff className="w-4 h-4" />
-                        ) : (
-                          <Eye className="w-4 h-4" />
-                        )}
-                      </button>
-                    </div>
-                    <Button
-                      onClick={() => saveApiKey(api.id)}
-                      disabled={savingKey === api.id || !apiKeys[api.id]}
-                      data-testid={`save-${api.id}-btn`}
-                      className="bg-lime text-void hover:bg-lime-hover disabled:opacity-50"
-                    >
-                      {savingKey === api.id ? (
-                        <span className="animate-spin">...</span>
-                      ) : (
-                        <Save className="w-4 h-4" />
-                      )}
-                    </Button>
-                    {keyStatus[`has_${api.id}_key`] && (
-                      <Button
-                        onClick={() => clearApiKey(api.id)}
-                        disabled={savingKey === api.id}
-                        data-testid={`clear-${api.id}-btn`}
-                        variant="outline"
-                        className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
+          ) : status === "error" ? (
+            // §3.11 verbatim: reassure that keys are untouched.
+            <ErrorState
+              error={loadError}
+              onRetry={fetchPreferences}
+              strings={{
+                headline: "Settings didn't load.",
+                body: "Your keys are encrypted at rest and untouched — this is a read failure.",
+              }}
+            />
+          ) : (
+            <>
+              {/* Info Banner */}
+              <div className="glass-card rounded-xl p-4 border-l-4 border-lime">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-lime flex-shrink-0 mt-0.5" aria-hidden="true" />
+                  <div className="text-sm">
+                    <p className="text-white font-medium mb-1">Bring Your Own Keys</p>
+                    <p className="text-zinc-400">
+                      Your own API keys (set below) are used first. If a key isn't configured, the app
+                      falls back to operator-provided server defaults when available. If no usable key
+                      is available — or yours is rejected or out of credit — you'll see a clear error
+                      telling you exactly what to fix.
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Preferences Section */}
-          <div className="glass-card rounded-xl p-6">
-            <h2 className="font-heading text-xl font-semibold text-white mb-6">
-              Default Preferences
-            </h2>
-
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm text-white/60 mb-2 block">Default Niche</label>
-                <Select
-                  value={preferences.default_niche}
-                  onValueChange={(value) => setPreferences(prev => ({ ...prev, default_niche: value }))}
-                >
-                  <SelectTrigger className="w-full bg-void border-white/10 text-white" data-testid="default-niche-selector">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-deep border-white/10">
-                    {NICHES.map((n) => (
-                      <SelectItem key={n} value={n} className="text-white hover:bg-white/5">
-                        {n}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
-              <div>
-                <label className="text-sm text-white/60 mb-2 block">Default Tone</label>
-                <Select
-                  value={preferences.default_tone}
-                  onValueChange={(value) => setPreferences(prev => ({ ...prev, default_tone: value }))}
-                >
-                  <SelectTrigger className="w-full bg-void border-white/10 text-white" data-testid="default-tone-selector">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-deep border-white/10">
-                    {TONES.map((t) => (
-                      <SelectItem key={t} value={t.toLowerCase()} className="text-white hover:bg-white/5">
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* API Keys Section */}
+              <div className="glass-card rounded-xl p-6">
+                <h2 className="font-heading text-xl font-semibold text-white mb-2">
+                  API Configuration
+                </h2>
+                <p className="text-zinc-400 text-sm mb-6">
+                  Add your own API keys to use instead of the server defaults. Keys are encrypted at
+                  rest and never shown again after saving.
+                </p>
+
+                <div className="space-y-6">
+                  {KEY_PROVIDERS.map((provider) => (
+                    <div key={provider.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label
+                          htmlFor={`${provider.id}-key-input`}
+                          className="text-sm text-zinc-400"
+                        >
+                          {provider.label}
+                        </label>
+                        {connected(provider.id) ? (
+                          <span className="flex items-center gap-1 text-xs text-rating-high">
+                            <Check className="w-3 h-3" aria-hidden="true" />
+                            Connected
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-zinc-400">
+                            <X className="w-3 h-3" aria-hidden="true" />
+                            Not connected
+                          </span>
+                        )}
+                      </div>
+
+                      {connected(provider.id) && !replacing[provider.id] ? (
+                        <>
+                          {/* §5.2: masked hint only when the backend supplies
+                              one — never a fabricated **** */}
+                          {keyHints[provider.id] && (
+                            <p className="text-xs text-zinc-400" data-testid={`${provider.id}-key-hint`}>
+                              Key on file: {keyHints[provider.id]}
+                            </p>
+                          )}
+                          <div className="flex gap-2 flex-wrap items-center">
+                            {/* §5.3: one-click validation against the real
+                                endpoint PR #9 shipped — never a fake control. */}
+                            <Button
+                              onClick={() => testKey(provider.id)}
+                              disabled={
+                                testState[provider.id]?.phase === "testing" ||
+                                savingKey === provider.id
+                              }
+                              data-testid={`test-${provider.id}-btn`}
+                              variant="outline"
+                              size="sm"
+                              className="border-white/10 text-white hover:bg-white/5"
+                            >
+                              {testState[provider.id]?.phase === "testing" ? (
+                                <>
+                                  <Loader2
+                                    className="w-3 h-3 animate-spin"
+                                    aria-hidden="true"
+                                  />
+                                  Testing…
+                                </>
+                              ) : (
+                                "Test key"
+                              )}
+                            </Button>
+                            <Button
+                              onClick={() =>
+                                setReplacing((prev) => ({ ...prev, [provider.id]: true }))
+                              }
+                              data-testid={`replace-${provider.id}-btn`}
+                              variant="outline"
+                              size="sm"
+                              className="border-white/10 text-white hover:bg-white/5"
+                            >
+                              Replace
+                            </Button>
+                            <Button
+                              onClick={() => clearApiKey(provider.id)}
+                              disabled={savingKey === provider.id}
+                              data-testid={`clear-${provider.id}-btn`}
+                              variant="outline"
+                              size="sm"
+                              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                          {/* §5.3 feedback line, below the button: neutral
+                              text; accents only (lime pass, red fail) per the
+                              §2.1 color law. */}
+                          {testState[provider.id]?.phase === "testing" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              aria-live="polite"
+                            >
+                              Runs a free validation call against {provider.name} — no generation
+                              cost.
+                            </p>
+                          )}
+                          {testState[provider.id]?.phase === "passed" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              aria-live="polite"
+                            >
+                              <Check className="w-3 h-3 inline text-lime mr-1" aria-hidden="true" />
+                              Key works — {provider.name} accepted it just now.
+                            </p>
+                          )}
+                          {testState[provider.id]?.phase === "failed" && (
+                            <p
+                              className="text-xs text-zinc-400"
+                              data-testid={`${provider.id}-test-line`}
+                              role="alert"
+                            >
+                              <X className="w-3 h-3 inline text-red-400 mr-1" aria-hidden="true" />
+                              {testFailureLine(provider.name, testState[provider.id])}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs text-zinc-400 mb-2">
+                            {provider.purpose}{" "}
+                            <a
+                              href={provider.link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-lime hover:underline"
+                            >
+                              Create a key
+                            </a>
+                          </p>
+                          <div className="flex gap-2">
+                            <div className="relative flex-1">
+                              <Input
+                                id={`${provider.id}-key-input`}
+                                type={showKeys[provider.id] ? "text" : "password"}
+                                value={apiKeys[provider.id]}
+                                onChange={(e) =>
+                                  setApiKeys((prev) => ({ ...prev, [provider.id]: e.target.value }))
+                                }
+                                data-testid={`${provider.id}-key-input`}
+                                placeholder={provider.placeholder}
+                                className="bg-void border-white/10 text-white pr-16"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleShowKey(provider.id)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                                aria-label={showKeys[provider.id] ? "Hide key" : "Show key"}
+                              >
+                                {showKeys[provider.id] ? (
+                                  <EyeOff className="w-4 h-4" aria-hidden="true" />
+                                ) : (
+                                  <Eye className="w-4 h-4" aria-hidden="true" />
+                                )}
+                              </button>
+                            </div>
+                            <Button
+                              onClick={() => saveApiKey(provider.id)}
+                              disabled={savingKey === provider.id || !apiKeys[provider.id]}
+                              data-testid={`save-${provider.id}-btn`}
+                              className="bg-lime text-void hover:bg-lime-hover disabled:opacity-50"
+                            >
+                              {savingKey === provider.id ? "Saving…" : "Save key"}
+                            </Button>
+                            {connected(provider.id) && (
+                              <Button
+                                onClick={() => {
+                                  setReplacing((prev) => ({ ...prev, [provider.id]: false }));
+                                  setApiKeys((prev) => ({ ...prev, [provider.id]: "" }));
+                                }}
+                                data-testid={`cancel-replace-${provider.id}-btn`}
+                                variant="ghost"
+                                size="sm"
+                                className="text-zinc-400 hover:text-white"
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-400">
+                            Stored encrypted (AES-256-GCM). Shown once, masked after.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <Button
-                onClick={savePreferences}
-                disabled={loading}
-                data-testid="save-preferences-btn"
-                className="w-full bg-lime text-void hover:bg-lime-hover mt-4"
-              >
-                {loading ? "Saving..." : "Save Preferences"}
-              </Button>
-            </div>
-          </div>
+              {/* Preferences Section */}
+              <div className="glass-card rounded-xl p-6">
+                <h2 className="font-heading text-xl font-semibold text-white mb-6">
+                  Default Preferences
+                </h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="default-niche-label" className="text-sm text-zinc-400 mb-2 block">
+                      Default niche
+                    </label>
+                    <Select
+                      value={preferences.default_niche}
+                      onValueChange={(value) => setPreferences((prev) => ({ ...prev, default_niche: value }))}
+                    >
+                      <SelectTrigger id="default-niche-label" className="w-full bg-void border-white/10 text-white" data-testid="default-niche-selector">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-deep border-white/10">
+                        {NICHES.map((n) => (
+                          <SelectItem key={n} value={n} className="text-white hover:bg-white/5">
+                            {n}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label htmlFor="default-tone-label" className="text-sm text-zinc-400 mb-2 block">
+                      Default tone
+                    </label>
+                    <Select
+                      value={preferences.default_tone}
+                      onValueChange={(value) => setPreferences((prev) => ({ ...prev, default_tone: value }))}
+                    >
+                      <SelectTrigger id="default-tone-label" className="w-full bg-void border-white/10 text-white" data-testid="default-tone-selector">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-deep border-white/10">
+                        {TONES.map((t) => (
+                          <SelectItem key={t} value={t.toLowerCase()} className="text-white hover:bg-white/5">
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={savePreferences}
+                    disabled={loading}
+                    data-testid="save-preferences-btn"
+                    className="bg-lime text-void hover:bg-lime-hover"
+                  >
+                    {loading ? "Saving…" : "Save preferences"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </main>
     </div>

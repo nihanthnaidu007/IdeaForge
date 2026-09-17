@@ -22,9 +22,13 @@ const renderRoute = (path) => {
 };
 
 const expectLandingShell = async () => {
-  expect(
-    await screen.findByText(/Turn Today's Trends Into/i, {}, { timeout: 10000 })
-  ).toBeInTheDocument();
+  const matches = await screen.findAllByText(
+    // Pack §4.2 hero headline — appears in the hero and the bottom CTA.
+    /Catch the trend while it/i,
+    {},
+    { timeout: 10000 }
+  );
+  expect(matches.length).toBeGreaterThan(0);
 };
 
 describe("App route shells", () => {
