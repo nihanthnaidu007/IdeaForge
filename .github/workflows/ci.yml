@@ -38,7 +38,7 @@ jobs:
         run: pytest tests/ -q
 
   frontend:
-    name: Frontend (scaffold gate + npm ci + build)
+    name: Frontend (scaffold gate + vitest + build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,18 +54,33 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # .npmrc sets legacy-peer-deps for the legacy CRA tree (react 19 +
-      # react-day-picker 8 peer conflict); the Vite migration removes it.
+      # .npmrc sets legacy-peer-deps for the remaining legacy CRA deps
+      # (react 19 + react-day-picker 8 peer conflict); the dependency-diet
+      # commit removes it.
       - name: Install
         run: npm ci
         working-directory: frontend
 
-      - name: Build
+      - name: Test (vitest)
+        run: npm test
         working-directory: frontend
-        # CI=false: CRA escalates every lint warning to an error when CI=true,
-        # and the pre-existing react-hooks/exhaustive-deps warnings live in
-        # src/pages files owned by sibling rebuild PRs (fixed by the Vite
-        # migration). The build still fails on real errors.
-        env:
-          CI: false
+
+      - name: Build
         run: npm run build
+        working-directory: frontend
+
+      # The Vite entry must ship clean and split: zero Emergent/PostHog
+      # strings in the built output, and more than one JS chunk (route-level
+      # code splitting — no monolith).
+      - name: Dist hygiene gate
+        run: |
+          if grep -riE "emergent|posthog" frontend/dist; then
+            echo "FAIL: dist/ contains Emergent/PostHog strings"
+            exit 1
+          fi
+          js_count=$(find frontend/dist -name '*.js' | wc -l)
+          if [ "$js_count" -lt 2 ]; then
+            echo "FAIL: expected route-split chunks in dist/, found $js_count JS file(s)"
+            exit 1
+          fi
+          echo "dist/ clean ($js_count JS chunks)."

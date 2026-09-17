@@ -1,14 +1,28 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, lazy, Suspense } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Toaster } from "./components/ui/sonner";
-import LandingPage from "./pages/LandingPage";
-import Dashboard from "./pages/Dashboard";
-import SavedIdeas from "./pages/SavedIdeas";
-import Settings from "./pages/Settings";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+// Route-level code splitting: each page becomes its own async chunk instead of
+// one monolithic bundle.
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const SavedIdeas = lazy(() => import("./pages/SavedIdeas"));
+const Settings = lazy(() => import("./pages/Settings"));
+
+const RouteFallback = () => (
+  <div className="min-h-screen bg-void flex items-center justify-center">
+    <div className="animate-loading-pulse text-lime">Loading...</div>
+  </div>
+);
+// Vite env: canonical VITE_BACKEND_URL, with REACT_APP_BACKEND_URL kept as a
+// legacy fallback for pre-migration .env.local files. In dev the default is the
+// local FastAPI server; in a built app it defaults to same-origin.
+const BACKEND_URL =
+  import.meta.env.VITE_BACKEND_URL ||
+  import.meta.env.REACT_APP_BACKEND_URL ||
+  (import.meta.env.DEV ? "http://127.0.0.1:8001" : window.location.origin);
 export const API = `${BACKEND_URL}/api`;
 
 // Auth Context
@@ -93,24 +107,26 @@ function App() {
     <AuthProvider>
       <div className="App min-h-screen bg-void">
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/dashboard" element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            } />
-            <Route path="/saved" element={
-              <ProtectedRoute>
-                <SavedIdeas />
-              </ProtectedRoute>
-            } />
-            <Route path="/settings" element={
-              <ProtectedRoute>
-                <Settings />
-              </ProtectedRoute>
-            } />
-          </Routes>
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/dashboard" element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } />
+              <Route path="/saved" element={
+                <ProtectedRoute>
+                  <SavedIdeas />
+                </ProtectedRoute>
+              } />
+              <Route path="/settings" element={
+                <ProtectedRoute>
+                  <Settings />
+                </ProtectedRoute>
+              } />
+            </Routes>
+          </Suspense>
         </BrowserRouter>
         <Toaster position="bottom-right" richColors />
       </div>

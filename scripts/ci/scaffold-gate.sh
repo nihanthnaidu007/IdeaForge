@@ -7,11 +7,10 @@
 # references:
 #   backend/server.py, backend/requirements.txt          -> provider-layer PR
 #                                                           (direct SDKs replace emergentintegrations)
-#   frontend/craco.config.js, frontend/package.json,
-#   frontend/package-lock.json                           -> Vite-migration PR
-#                                                           (drops @emergentbase/visual-edits)
 #   frontend/src/                                        -> app-cleanup PR
 #                                                           (Universal Key copy in Dashboard/Settings)
+#   .github/workflows/ci.yml                             -> self-referential: its dist-hygiene
+#                                                           step greps for the same patterns
 # scripts/ci/scaffold-gate.sh, tests/test_smoke.py      -> self-referential: these two files
 #                                                           define the patterns being matched
 set -euo pipefail
@@ -19,7 +18,7 @@ cd "$(dirname "$0")/../.."
 
 SECRET_RE='tvly-[A-Za-z0-9_-]{16,}|sk-emergent-[A-Za-z0-9]+|sk-ant-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{48}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[baprs]-[A-Za-z0-9-]{10,}|phc_[A-Za-z0-9]{20,}'
 SCAFFOLD_RE='emergent|Universal Key'
-ALLOW_RE='^\.?/?(backend/server\.py|backend/requirements\.txt|frontend/craco\.config\.js|frontend/package\.json|frontend/package-lock\.json|frontend/src/|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
+ALLOW_RE='^\.?/?(backend/server\.py|backend/requirements\.txt|frontend/src/|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
 
 fails=$(grep -rInE \
     --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \

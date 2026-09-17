@@ -50,13 +50,18 @@ SCAFFOLD_RE = re.compile(r"emergent|Universal Key", re.IGNORECASE)
 SIBLING_OWNED_EXACT = (
     "backend/server.py",
     "backend/requirements.txt",
-    "frontend/craco.config.js",
     "frontend/package.json",
     "frontend/package-lock.json",
 )
 
 # Pattern-defining files — they quote the scaffold strings they match against.
-SELF_REFERENTIAL = ("scripts/ci/scaffold-gate.sh", "tests/test_smoke.py")
+# .github/workflows/ci.yml qualifies too: its dist-hygiene step greps dist/ for
+# the same markers this test bans from source.
+SELF_REFERENTIAL = (
+    "scripts/ci/scaffold-gate.sh",
+    "tests/test_smoke.py",
+    ".github/workflows/ci.yml",
+)
 SIBLING_OWNED_PREFIXES = ("frontend/src/",)
 
 SKIP_DIRS = {

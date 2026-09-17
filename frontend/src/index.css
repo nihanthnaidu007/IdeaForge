@@ -176,9 +176,3 @@ code {
   border-color: rgba(212, 248, 68, 0.3);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 4px 20px -2px rgba(0,0,0,0.5);
 }
-
-@layer base {
-  [data-debug-wrapper="true"] {
-    display: contents !important;
-  }
-}
