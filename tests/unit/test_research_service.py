@@ -119,6 +119,19 @@ async def test_tavily_429_classified_identically_on_both_paths(
         await _probe_key("tavily", "k")
 
 
+async def test_tavily_uses_bearer_header_not_body_key() -> None:
+    """L6: the API key rides the Authorization header (Tavily's current
+    contract), never the legacy JSON body field."""
+    client = FakeAsyncClient([_ok_response()])
+    service = TavilyResearchService("tvly-secret-key", http_client=client)
+    await service.search("AI")
+    await service.aclose()
+
+    call = client.calls[0]
+    assert call["headers"]["Authorization"] == "Bearer tvly-secret-key"
+    assert "api_key" not in call["json"]
+
+
 async def test_search_500_raises_research_error() -> None:
     service = TavilyResearchService("k", http_client=FakeAsyncClient([FakeResponse(500)]))
     with pytest.raises(ResearchError):

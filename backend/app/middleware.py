@@ -58,10 +58,20 @@ def rate_limit_identity(scope: Scope, *, trusted_proxy: bool) -> str:
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Assigns/propagates an X-Request-ID and emits one structured log line per request."""
 
+    def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
+        super().__init__(app)
+        self.settings = settings
+
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request_id = uuid.uuid4().hex[:16]
+        client_id = request.headers.get("x-request-id")
+        if client_id and self.settings.env != "prod":
+            # L4: client-supplied ids are unbounded attacker data headed for a
+            # structured log line. Production always uses server-generated
+            # ids; dev keeps the echoed value (length-capped) for correlation.
+            request_id = client_id[:64]
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         try:

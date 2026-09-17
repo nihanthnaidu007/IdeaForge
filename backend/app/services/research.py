@@ -94,11 +94,13 @@ class TavilyResearchService:
             response = await self._client.post(
                 _SEARCH_URL,
                 json={
-                    "api_key": self._api_key,
                     "query": query,
                     "max_results": self._max_results,
                     "include_raw_content": False,
                 },
+                # L6: the key rides the Authorization header (Tavily's current
+                # contract) — not the legacy body field.
+                headers={"Authorization": f"Bearer {self._api_key}"},
             )
         except httpx.TimeoutException as exc:
             raise ResearchError("Tavily request timed out — please retry.") from exc

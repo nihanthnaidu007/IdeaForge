@@ -51,6 +51,12 @@ def _hash_refresh_token(raw: str) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+# L1: computed once at import — burning the same bcrypt cost a real user hit
+# would spend keeps unknown-email logins from being measurably faster than
+# wrong-password ones (which would reveal which emails are registered).
+_DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"ideaforge-timing-equalizer", bcrypt.gensalt())
+
+
 def _create_access_token(
     user_id: str, email: str, token_version: int, settings: Settings
 ) -> str:
@@ -173,7 +179,12 @@ async def login(
     settings: Settings = Depends(get_settings_dep),
 ) -> TokenResponse:
     user = await db.users.find_one({"email": data.email}, {"_id": 0})
-    if not user or not _verify_password(data.password, user["password"]):
+    if not user:
+        # L1: unknown-email misses burn the same bcrypt cost as a real hit —
+        # a fast 401 would leak which emails are registered.
+        bcrypt.checkpw(data.password.encode("utf-8"), _DUMMY_BCRYPT_HASH)
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    if not _verify_password(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return await _issue_tokens(db, user, settings)
 

@@ -85,10 +85,11 @@ async def _probe_key(provider: str, api_key: str) -> None:
                 response = await client.post(
                     _TAVILY_PROBE_URL,
                     json={
-                        "api_key": api_key,
                         "query": "connectivity check",
                         "max_results": 1,
                     },
+                    # L6: mirror research.py — Authorization header, not body.
+                    headers={"Authorization": f"Bearer {api_key}"},
                 )
         except httpx.TimeoutException as exc:
             raise ProviderUnavailableError(

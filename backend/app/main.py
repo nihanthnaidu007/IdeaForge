@@ -49,7 +49,7 @@ def create_app(
         settings.rate_limit_auth_per_minute, window_seconds=DEFAULT_RATE_LIMIT_WINDOW_S
     )
     app.add_middleware(AuthRateLimitMiddleware, limiter=limiter, settings=settings)
-    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(RequestContextMiddleware, settings=settings)
 
     app.add_middleware(
         CORSMiddleware,

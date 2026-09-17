@@ -11,6 +11,7 @@ import base64
 import pytest
 from app.services.vault import (
     VaultDecryptionError,
+    VaultValidationError,
     decrypt_secret,
     encrypt_secret,
     hint,
@@ -64,6 +65,14 @@ def test_rotated_master_key_fails() -> None:
     rotated = base64.b64encode(b"1" * 32).decode("ascii")
     with pytest.raises(VaultDecryptionError):
         decrypt_secret(base64.b64decode(rotated), "user-1", "openai", blob)
+
+
+def test_encrypt_rejects_degenerate_secrets() -> None:
+    """L7: the vault enforces the key-shape floor itself — a too-short secret
+    is never encrypted, even if a caller skips its own validation."""
+    for plaintext in ("", "short", "x" * 7):
+        with pytest.raises(VaultValidationError):
+            encrypt_secret(MASTER, "user-1", "openai", plaintext)
 
 
 def test_nonce_is_fresh_per_encryption() -> None:
