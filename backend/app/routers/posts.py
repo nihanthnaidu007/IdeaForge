@@ -31,6 +31,7 @@ from app.models.posts import (
     TweakVariantRequest,
 )
 from app.models.research import TrendItem
+from app.routers.voice import get_active_voice_profile
 from app.services.cost_hints import build_cost_hint
 from app.services.llm.provider import (
     GenerationError,
@@ -56,11 +57,11 @@ from app.services.variants import (
     brief_intent,
     build_idea_block,
     build_trend_block,
-    build_voice_block,
     estimate_output_tokens,
     normalize_format,
     parse_variant_output,
 )
+from app.services.voice import build_voice_block, voice_fallback_block
 
 logger = logging.getLogger("app.posts")
 
@@ -69,6 +70,19 @@ router = APIRouter()
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+async def _voice_block(db: Any, user_id: str) -> str:
+    """The VOICE DNA block for this user's prompts (retrieval-into-prompt).
+
+    Versioned profiles: the active version wins. When the user has none, a
+    neutral fallback block keeps output honest about its register instead of
+    inventing a persona.
+    """
+    profile = await get_active_voice_profile(db, user_id)
+    if profile is None:
+        return voice_fallback_block()
+    return build_voice_block(profile)
 
 
 def _insight_evidence_gaps(insights: dict[str, Any] | None) -> list[str]:

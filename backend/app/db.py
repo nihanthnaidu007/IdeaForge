@@ -64,6 +64,18 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
         ),
         IndexModel([("id", ASCENDING)], name="uq_variant_sets_id", unique=True),
     ],
+    "voice_profiles": [
+        IndexModel([("user_id", ASCENDING)], name="uq_voice_profiles_user", unique=True),
+    ],
+    "hooks": [
+        # Seed documents repeat the pattern id across formats (one doc per
+        # pattern×format); user hooks get uuid ids, so (id, format) is unique.
+        IndexModel(
+            [("id", ASCENDING), ("format", ASCENDING)],
+            name="uq_hooks_id_format",
+            unique=True,
+        ),
+    ],
     "usage_events": [
         # Analytics reads a user's events newest-first; every write appends.
         IndexModel(
