@@ -19,7 +19,12 @@ from app.services.llm.prompts import (
     CLAUDE_IDEA_GENERATION_PROMPT,
     CLAUDE_INSIGHTS_PROMPT,
 )
-from app.services.llm.provider import parse_json_output
+from app.services.llm.provider import last_usage_of, parse_json_output
+from app.services.usage import (
+    IDEAS_GENERATED,
+    INSIGHT_CARD_GENERATED,
+    record_usage_event,
+)
 
 router = APIRouter()
 
@@ -52,6 +57,15 @@ async def generate_ideas(
     )
     response = await llm.complete(system=system, prompt=prompt, json_mode=True)
     ideas = parse_json_output(response, provider="anthropic")
+    usage = last_usage_of(llm)
+    # Honest analytics: one event per successful generation, with the token
+    # counts the SDK reported. Failures above never reach this line.
+    await record_usage_event(
+        db, current_user["user_id"], IDEAS_GENERATED,
+        provider="anthropic", count=len(ideas) if isinstance(ideas, list) else 1,
+        tokens_in=usage.tokens_in if usage else None,
+        tokens_out=usage.tokens_out if usage else None,
+    )
     return {"ideas": ideas}
 
 
@@ -80,4 +94,12 @@ async def get_idea_insights(
         system=CLAUDE_INSIGHTS_PROMPT, prompt=prompt, json_mode=True
     )
     insights = parse_json_output(response, provider="anthropic")
+    usage = last_usage_of(llm)
+    await record_usage_event(
+        db, current_user["user_id"], INSIGHT_CARD_GENERATED,
+        provider="anthropic",
+        tokens_in=usage.tokens_in if usage else None,
+        tokens_out=usage.tokens_out if usage else None,
+    )
     return insights
+

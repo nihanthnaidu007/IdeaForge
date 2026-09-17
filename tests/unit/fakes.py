@@ -50,7 +50,29 @@ class FakeCollection:
         self._id_field = id_field
 
     def _match(self, doc: dict[str, Any], query: dict[str, Any]) -> bool:
-        return all(doc.get(k) == v for k, v in query.items())
+        for key, cond in query.items():
+            value = doc.get(key)
+            if isinstance(cond, dict) and cond and all(
+                k.startswith("$") for k in cond
+            ):
+                # Range operators (e.g. the analytics window's {"$gte": since}).
+                for op, operand in cond.items():
+                    try:
+                        if op == "$gte" and not value >= operand:
+                            return False
+                        if op == "$gt" and not value > operand:
+                            return False
+                        if op == "$lte" and not value <= operand:
+                            return False
+                        if op == "$lt" and not value < operand:
+                            return False
+                        if op not in ("$gte", "$gt", "$lte", "$lt"):
+                            return False  # unsupported operator fails closed
+                    except TypeError:
+                        return False  # incomparable types never match
+            elif value != cond:
+                return False
+        return True
 
     def _project(self, doc: dict[str, Any], projection: dict[str, Any] | None) -> dict:
         if not projection:
@@ -195,6 +217,7 @@ class FakeDatabase:
         self.saved_ideas = FakeCollection(unique_fields=("id",))
         self.user_preferences = FakeCollection(unique_fields=("user_id",))
         self.key_audit = FakeCollection()
+        self.usage_events = FakeCollection()
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 
