@@ -14,7 +14,10 @@ from typing import Any
 import pytest
 from app.routers import posts as posts_module
 from app.routers import voice as voice_module
+from app.services.llm.provider import MissingKeyError
 
+from tests.conftest import make_settings
+from tests.unit.fakes import FakeDatabase
 from tests.unit.fakes import RecordingLLM as _RecordingLLM
 from tests.unit.fakes import stub_get_llm as _stub_get_llm
 
@@ -87,7 +90,7 @@ async def _extract(client, auth_headers, monkeypatch, responses: list[str]) -> d
     )
     response = await client.post(
         "/api/voice/profile",
-        json={"samples": _SAMPLES},
+        json={"samples": _SAMPLES, "provider": "openai"},
         headers=auth_headers,
     )
     assert response.status_code == 200, response.text
@@ -230,7 +233,8 @@ async def test_generation_without_profile_uses_neutral_fallback(
 
 
 async def test_extraction_without_any_key_is_typed_400(client, auth_headers) -> None:
-    # No user key stored and no server env default: real resolution fails loud.
+    # Auto provider detection (no provider sent), no user key, no server
+    # default: detection fails loud with the same typed error.
     response = await client.post(
         "/api/voice/profile", json={"samples": _SAMPLES}, headers=auth_headers
     )
@@ -247,7 +251,9 @@ async def test_insufficient_samples_surfaces_as_502(
         _stub_get_llm([json.dumps({"error": "insufficient_samples"})]),
     )
     response = await client.post(
-        "/api/voice/profile", json={"samples": _SAMPLES}, headers=auth_headers
+        "/api/voice/profile",
+        json={"samples": _SAMPLES, "provider": "openai"},
+        headers=auth_headers,
     )
     assert response.status_code == 502
     assert response.json()["kind"] == "GENERATION_FAILED"
@@ -259,7 +265,7 @@ async def test_fewer_than_three_nonempty_samples_is_400(
     monkeypatch.setattr(voice_module, "get_llm", _stub_get_llm(["{}"]))
     response = await client.post(
         "/api/voice/profile",
-        json={"samples": ["Post one", "  ", "Post three"]},
+        json={"samples": ["Post one", "  ", "Post three"], "provider": "openai"},
         headers=auth_headers,
     )
     assert response.status_code == 400
@@ -294,7 +300,7 @@ async def test_extraction_prompt_carries_schema_and_samples(
     )
     await client.post(
         "/api/voice/profile",
-        json={"samples": _SAMPLES, "niche": "devtools"},
+        json={"samples": _SAMPLES, "niche": "devtools", "provider": "openai"},
         headers=auth_headers,
     )
     call = capture[0].calls[0]
@@ -303,3 +309,69 @@ async def test_extraction_prompt_carries_schema_and_samples(
     assert "VoiceDNAProfile" in call["prompt"]
     assert "The boring answer won" in call["prompt"]  # sample text slot-filled
     assert "devtools" in call["prompt"]  # niche context slot-filled
+
+
+# --- auto provider detection --------------------------------------------------
+
+
+async def test_pick_provider_requested_beats_detection() -> None:
+    # An explicit provider wins without touching the database at all.
+    picked = await voice_module._pick_provider(
+        "user-1", "anthropic", FakeDatabase(), make_settings()
+    )
+    assert picked == "anthropic"
+
+
+async def test_pick_provider_auto_prefers_byok_blob() -> None:
+    # Presence check only: a stored blob decides the provider before any
+    # server default is consulted, with no decryption and no audit write.
+    db = FakeDatabase()
+    await db.user_preferences.insert_one(
+        {
+            "user_id": "user-1",
+            "keys": {"anthropic": {"nonce": "n", "ciphertext": "c"}},
+        }
+    )
+    picked = await voice_module._pick_provider("user-1", None, db, make_settings())
+    assert picked == "anthropic"
+
+
+async def test_pick_provider_auto_falls_back_to_server_env_key() -> None:
+    db = FakeDatabase()
+    picked = await voice_module._pick_provider(
+        "user-1", None, db, make_settings(openai_api_key="sk-server-default")
+    )
+    assert picked == "openai"
+
+
+async def test_pick_provider_auto_without_keys_raises_missing_key() -> None:
+    with pytest.raises(MissingKeyError):
+        await voice_module._pick_provider(
+            "user-1", None, FakeDatabase(), make_settings()
+        )
+
+
+async def test_extraction_auto_provider_uses_connected_key(
+    client, auth_headers, monkeypatch, fake_db
+) -> None:
+    # The frontend posts without a provider: detection must extract with the
+    # provider the user actually connected (here, Anthropic-only).
+    user = await fake_db.users.find_one({"email": "creator@example.com"})
+    await fake_db.user_preferences.insert_one(
+        {
+            "user_id": user["id"],
+            "keys": {"anthropic": {"nonce": "n", "ciphertext": "c"}},
+        }
+    )
+    seen: list[str] = []
+
+    async def _recording_get_llm(user_id, provider, *, db, vault, settings):
+        seen.append(provider)
+        return _RecordingLLM([_profile_response(_valid_profile())])
+
+    monkeypatch.setattr(voice_module, "get_llm", _recording_get_llm)
+    response = await client.post(
+        "/api/voice/profile", json={"samples": _SAMPLES}, headers=auth_headers
+    )
+    assert response.status_code == 200, response.text
+    assert seen == ["anthropic"]

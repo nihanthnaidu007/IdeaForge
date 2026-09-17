@@ -21,7 +21,10 @@ class ExtractVoiceRequest(BaseModel):
     samples: list[_BoundedSample] = Field(min_length=3, max_length=5)
     niche: str = Field(default="", max_length=120)
     audience: str = Field(default="", max_length=200)
-    provider: Literal["anthropic", "openai"] = "openai"
+    # None = auto: extract with whichever provider the user actually has a
+    # key for (BYOK blob or server env default). A BYOK user with one key
+    # shouldn't need to know this route's provider order.
+    provider: Literal["anthropic", "openai"] | None = None
 
 
 class StructureProfile(BaseModel):

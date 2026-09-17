@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.deps import get_current_user, get_db, get_llm, get_settings_dep, get_vault
 from app.models.voice import ExtractVoiceRequest, VoiceProfileEdit
 from app.services import usage
-from app.services.llm.provider import complete_json_with_retry
+from app.services.llm.provider import MissingKeyError, complete_json_with_retry
 from app.services.voice import (
     EXTRACTION_SYSTEM_PROMPT,
     build_extraction_user_prompt,
@@ -71,6 +71,34 @@ async def _append_version(db: Any, user_id: str, version: dict[str, Any]) -> int
     return next_version
 
 
+async def _pick_provider(
+    user_id: str,
+    requested: str | None,
+    db: Any,
+    settings: Any,
+) -> str:
+    """Requested provider wins; None = auto — the connected key decides.
+
+    Presence check only (BYOK blob or server env default): no decryption and
+    no key_audit write here, so the probe stays side-effect-free and the real
+    use is audited exactly once, inside get_llm's resolution.
+    """
+    if requested:
+        return requested
+    for candidate in ("openai", "anthropic"):
+        prefs = await db.user_preferences.find_one(
+            {"user_id": user_id}, {"_id": 0, "keys": 1}
+        )
+        if ((prefs or {}).get("keys") or {}).get(candidate):
+            return candidate
+        if getattr(settings, f"{candidate}_api_key", None):
+            return candidate
+    raise MissingKeyError(
+        "Connect an OpenAI or Anthropic key in Settings — voice extraction "
+        "runs on your own key."
+    )
+
+
 @router.post("/voice/profile")
 async def extract_voice_profile(
     data: ExtractVoiceRequest,
@@ -87,8 +115,9 @@ async def extract_voice_profile(
             detail="Paste at least 3 non-empty posts — the analyst needs real material.",
         )
 
+    provider = await _pick_provider(user_id, data.provider, db, settings)
     llm = await get_llm(
-        user_id, data.provider, db=db, vault=vault, settings=settings
+        user_id, provider, db=db, vault=vault, settings=settings
     )
     prompt = build_extraction_user_prompt(
         samples, niche=data.niche, audience=data.audience
@@ -98,7 +127,7 @@ async def extract_voice_profile(
         system=EXTRACTION_SYSTEM_PROMPT,
         prompt=prompt,
         max_tokens=3_000,
-        provider=data.provider,
+        provider=provider,
     )
     style = validate_voice_profile(payload)
 
