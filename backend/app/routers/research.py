@@ -15,6 +15,7 @@ from app.deps import get_current_user, get_db, get_http_client, get_settings_dep
 from app.models.research import ResearchRequest
 from app.services.llm.provider import resolve_user_key
 from app.services.research import TavilyResearchService
+from app.services.usage import RESEARCH_RUN, record_usage_event
 
 router = APIRouter()
 
@@ -35,4 +36,10 @@ async def research_trends(
     )
     service = TavilyResearchService(str(tavily_key), http_client=http_client)
     raw_trends = await service.search(data.niche)
+    # Honest analytics: one event per real research run. Never written on
+    # failure — a failed search produces no usage row, so counts stay true.
+    await record_usage_event(
+        db, current_user["user_id"], RESEARCH_RUN,
+        provider="tavily", count=len(raw_trends),
+    )
     return {"raw_trends": raw_trends, "niche": data.niche, "tone": data.tone}

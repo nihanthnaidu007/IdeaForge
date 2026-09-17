@@ -13,6 +13,7 @@ below. What this module owns permanently:
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from app.config import Settings
@@ -79,6 +80,28 @@ class ProviderUnavailableError(ProviderError):
 class GenerationError(ProviderError):
     status_code = 502
     kind = "GENERATION_FAILED"
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """Token counts of one completed LLM call, as reported by the provider SDK.
+
+    Feeds usage events (honest analytics — the user's own spend made visible).
+    ``last_usage`` on the concrete clients holds the usage of the most recent
+    successful ``complete()``; fakes that don't track usage simply don't set it
+    (``last_usage_of`` returns None and the event omits token counts).
+    """
+
+    tokens_in: int
+    tokens_out: int
+
+
+def last_usage_of(llm: Any) -> TokenUsage | None:
+    """Read the usage of the last completed call from a provider instance."""
+    usage = getattr(llm, "last_usage", None)
+    if isinstance(usage, TokenUsage):
+        return usage
+    return None
 
 
 @runtime_checkable
@@ -181,3 +204,4 @@ def parse_json_output(text: str, *, provider: str | None = None) -> Any:
             "The model returned unparseable JSON. Please retry generation.",
             provider=provider,
         ) from exc
+

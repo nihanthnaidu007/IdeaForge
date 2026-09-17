@@ -15,6 +15,13 @@ from fastapi import APIRouter, Depends
 from app.deps import get_current_user, get_db, get_llm, get_settings_dep, get_vault
 from app.models.posts import GeneratePostRequest, TweakPostRequest
 from app.services.llm.prompts import GPT_POST_WRITING_PROMPT
+from app.services.llm.provider import last_usage_of
+from app.services.usage import (
+    POST_DRAFTED,
+    POST_REGENERATED,
+    POST_TWEAKED,
+    record_usage_event,
+)
 
 router = APIRouter()
 
@@ -37,6 +44,7 @@ async def _generate_post(
     vault: Any,
     settings: Any,
     user_id: str,
+    event: str,
 ) -> dict[str, str]:
     llm = await get_llm(user_id, "openai", db=db, vault=vault, settings=settings)
     custom = (
@@ -53,6 +61,13 @@ async def _generate_post(
         "Write the post now."
     )
     response = await llm.complete(system=GPT_POST_WRITING_PROMPT, prompt=prompt)
+    usage = last_usage_of(llm)
+    await record_usage_event(
+        db, user_id, event,
+        provider="openai",
+        tokens_in=usage.tokens_in if usage else None,
+        tokens_out=usage.tokens_out if usage else None,
+    )
     return {"post": response.strip()}
 
 
@@ -65,7 +80,8 @@ async def generate_post(
     settings: Any = Depends(get_settings_dep),
 ) -> dict[str, str]:
     return await _generate_post(
-        data, db=db, vault=vault, settings=settings, user_id=current_user["user_id"]
+        data, db=db, vault=vault, settings=settings, user_id=current_user["user_id"],
+        event=POST_DRAFTED,
     )
 
 
@@ -77,9 +93,11 @@ async def regenerate_post(
     vault: Any = Depends(get_vault),
     settings: Any = Depends(get_settings_dep),
 ) -> dict[str, str]:
-    # Real variants (distinct angle/hook/energy) land with the variants PR.
+    # Real variants (distinct angle/hook/energy) land with the variants PR;
+    # this route records its own event so analytics counts regenerations.
     return await _generate_post(
-        data, db=db, vault=vault, settings=settings, user_id=current_user["user_id"]
+        data, db=db, vault=vault, settings=settings, user_id=current_user["user_id"],
+        event=POST_REGENERATED,
     )
 
 
@@ -106,4 +124,11 @@ async def tweak_post(
         "Write the updated post now."
     )
     response = await llm.complete(system=GPT_POST_WRITING_PROMPT, prompt=prompt)
+    usage = last_usage_of(llm)
+    await record_usage_event(
+        db, current_user["user_id"], POST_TWEAKED,
+        provider="openai",
+        tokens_in=usage.tokens_in if usage else None,
+        tokens_out=usage.tokens_out if usage else None,
+    )
     return {"post": response.strip()}

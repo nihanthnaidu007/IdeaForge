@@ -9,6 +9,7 @@ index behavior is proven in the mongo:7 integration tier.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -50,7 +51,29 @@ class FakeCollection:
         self._id_field = id_field
 
     def _match(self, doc: dict[str, Any], query: dict[str, Any]) -> bool:
-        return all(doc.get(k) == v for k, v in query.items())
+        for key, cond in query.items():
+            value = doc.get(key)
+            if isinstance(cond, dict) and cond and all(
+                k.startswith("$") for k in cond
+            ):
+                # Range operators (e.g. the analytics window's {"$gte": since}).
+                for op, operand in cond.items():
+                    try:
+                        if op == "$gte" and not value >= operand:
+                            return False
+                        if op == "$gt" and not value > operand:
+                            return False
+                        if op == "$lte" and not value <= operand:
+                            return False
+                        if op == "$lt" and not value < operand:
+                            return False
+                        if op not in ("$gte", "$gt", "$lte", "$lt"):
+                            return False  # unsupported operator fails closed
+                    except TypeError:
+                        return False  # incomparable types never match
+            elif value != cond:
+                return False
+        return True
 
     def _project(self, doc: dict[str, Any], projection: dict[str, Any] | None) -> dict:
         if not projection:
@@ -83,6 +106,18 @@ class FakeCollection:
         if "$inc" in update:
             for key, value in update["$inc"].items():
                 doc[key] = doc.get(key, 0) + value
+        if "$push" in update:
+            for key, value in update["$push"].items():
+                doc.setdefault(key, []).append(value)
+        if "$pull" in update:
+            for key, matcher in update["$pull"].items():
+                entries = doc.get(key)
+                if isinstance(entries, list):
+                    doc[key] = [
+                        entry
+                        for entry in entries
+                        if not self._match(entry, matcher)
+                    ]
 
     def _apply_pipeline(self, doc: dict[str, Any], pipeline: list[dict]) -> None:
         for stage in pipeline:
@@ -140,13 +175,22 @@ class FakeCollection:
     async def update_one(
         self, query: dict[str, Any], update: dict[str, Any]
     ) -> Any:
+        matched = 0
         modified = 0
-        for doc in self.docs.values():
+        for key, doc in self.docs.items():
             if self._match(doc, query):
+                matched += 1
+                # Deep copy: $push/$unset mutate nested lists in place, and a
+                # shallow snapshot would alias them into always-equal.
+                before = copy.deepcopy(doc)
                 self._apply_update(doc, update)
-                modified += 1
+                # Real MongoDB reports modified_count only for documents whose
+                # values actually changed (a $pull that matches nothing is a
+                # no-op); tests lean on that honesty for 404s.
+                if self.docs[key] != before:
+                    modified += 1
         return type(
-            "UpdateResult", (), {"modified_count": modified, "matched_count": modified}
+            "UpdateResult", (), {"modified_count": modified, "matched_count": matched}
         )()
 
     async def update_many(
@@ -195,6 +239,7 @@ class FakeDatabase:
         self.saved_ideas = FakeCollection(unique_fields=("id",))
         self.user_preferences = FakeCollection(unique_fields=("user_id",))
         self.key_audit = FakeCollection()
+        self.usage_events = FakeCollection()
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 

@@ -46,6 +46,13 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_key_audit_user_at",
         ),
     ],
+    "usage_events": [
+        # Analytics reads a user's events newest-first; every write appends.
+        IndexModel(
+            [("user_id", ASCENDING), ("at", DESCENDING)],
+            name="ix_usage_user_at",
+        ),
+    ],
 }
 
 

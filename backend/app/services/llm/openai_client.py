@@ -32,6 +32,7 @@ from app.services.llm.provider import (
     ProviderQuotaError,
     ProviderRateLimitedError,
     ProviderUnavailableError,
+    TokenUsage,
 )
 
 _DEFAULT_TIMEOUT_SECONDS = 60.0
@@ -171,6 +172,7 @@ class OpenAILLM:
             )
         except OpenAIError as exc:
             raise map_openai_error(exc, self.provider) from exc
+        self._record_usage(getattr(response, "usage", None))
         text = _response_text(response)
         if not text.strip():
             raise GenerationError(
@@ -178,3 +180,13 @@ class OpenAILLM:
                 provider=self.provider,
             )
         return text
+
+    def _record_usage(self, usage: Any) -> None:
+        """Capture the SDK usage block; absent usage stays None, never zero."""
+        if usage is None:
+            self.last_usage = None
+            return
+        tokens_in = getattr(usage, "prompt_tokens", None)
+        tokens_out = getattr(usage, "completion_tokens", None)
+        if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+            self.last_usage = TokenUsage(tokens_in=tokens_in, tokens_out=tokens_out)

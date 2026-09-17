@@ -2,7 +2,16 @@
 
 from fastapi import APIRouter
 
-from app.routers import auth, health, ideas, posts, preferences, research, saved
+from app.routers import (
+    analytics,
+    auth,
+    health,
+    ideas,
+    posts,
+    preferences,
+    research,
+    saved,
+)
 
 api_router = APIRouter(prefix="/api")
 api_router.include_router(health.api_router)
@@ -12,3 +21,4 @@ api_router.include_router(ideas.router)
 api_router.include_router(posts.router)
 api_router.include_router(saved.router)
 api_router.include_router(preferences.router)
+api_router.include_router(analytics.router)

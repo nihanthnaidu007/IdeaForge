@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, LogOut, Settings as SettingsIcon, FolderOpen, ArrowLeft } from "lucide-react";
+import { Sparkles, LogOut, Settings as SettingsIcon, FolderOpen, BarChart3, ArrowLeft } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import AuthModal from "@/components/layout/AuthModal";
 import { Button } from "@/components/ui/button";
@@ -39,6 +39,15 @@ const Navbar = ({ title, backTo, center, onRequireAuth }) => {
         aria-label="Saved Ideas"
       >
         <FolderOpen className="w-5 h-5" aria-hidden="true" />
+      </button>
+      <button
+        onClick={() => goTo("/analytics")}
+        data-testid="nav-analytics-btn"
+        className="p-2 text-zinc-400 hover:text-white transition-colors"
+        title="Analytics"
+        aria-label="Analytics"
+      >
+        <BarChart3 className="w-5 h-5" aria-hidden="true" />
       </button>
       <button
         onClick={() => goTo("/settings")}
