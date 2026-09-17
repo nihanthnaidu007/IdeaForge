@@ -81,11 +81,15 @@ async def add_manual_metric(
     entry = ManualMetricEntry(
         id=str(uuid.uuid4()),
         recorded_at=datetime.now(UTC).isoformat(),
-        **data.model_dump(),
+        # mode="json": posted_on serializes to an ISO string — BSON cannot
+        # encode datetime.date, and the aggregation service parses the string
+        # back into a date for period math.
+        **data.model_dump(mode="json"),
     )
     doc = await db.saved_ideas.find_one_and_update(
         _own_idea_query(idea_id, current_user),
-        {"$push": {"manual_metrics": entry.model_dump()}},
+        # mode="json" here too — the pushed document is what mongod must encode.
+        {"$push": {"manual_metrics": entry.model_dump(mode="json")}},
         return_document=ReturnDocument.AFTER,
     )
     if doc is None:

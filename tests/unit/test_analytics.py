@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bson
 from app.services.analytics import (
     _MAX_TZ_OFFSET,
     _TIMELINE_DAYS,
@@ -392,6 +393,30 @@ async def test_manual_metric_attach_round_trip(client, auth_headers) -> None:
     )
     assert listing.status_code == 200
     assert [e["id"] for e in listing.json()] == [entry["id"]]
+
+
+async def test_manual_metric_entry_is_bson_encodable(client, auth_headers) -> None:
+    """Regression: the $push entry must be BSON-encodable.
+
+    Pydantic parses ``posted_on`` into ``datetime.date``, which BSON cannot
+    encode — the fake database stores dicts as-is and hid the failure until a
+    real mongod rejected the write (dogfood 500). model_dump(mode="json")
+    keeps the stored value an ISO string, which the aggregation service parses.
+    """
+    idea_id = await _save_an_idea(client, auth_headers)
+    response = await client.post(
+        f"/api/analytics/posts/{idea_id}/metrics",
+        json={"posted_on": "2026-09-16", "impressions": 1200},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    app = client._transport.app
+    docs = await app.state.db.saved_ideas.find({}).to_list()
+    stored = next(doc for doc in docs if doc["id"] == idea_id)
+    pushed = stored["manual_metrics"][0]
+    encoded = bson.decode(bson.encode(pushed))  # encode raises InvalidDocument on datetime.date
+    assert encoded["posted_on"] == "2026-09-16"
 
 
 async def test_manual_metric_rejects_negative_counts(client, auth_headers) -> None:
