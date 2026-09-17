@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from app.main import create_app
+from app.middleware import rate_limit_identity
 from app.rate_limit import RateLimitExceeded, SlidingWindowLimiter
 
 from tests.conftest import make_settings
@@ -63,6 +64,14 @@ def test_reset_clears_state() -> None:
     limiter.check("k")
 
 
+def test_key_space_is_bounded() -> None:
+    """L2: tracked keys never grow past MAX_KEYS (oldest-inserted evicted)."""
+    limiter = SlidingWindowLimiter(1, 60.0, clock=FakeClock())
+    for i in range(limiter.MAX_KEYS + 5):
+        limiter.check(f"key-{i}")
+        assert len(limiter._hits) <= limiter.MAX_KEYS
+
+
 def _limited_app(limit: int, *, trusted_proxy: bool = False):
     settings = make_settings(
         rate_limit_auth_per_minute=limit, TRUSTED_PROXY=trusted_proxy
@@ -99,6 +108,81 @@ async def test_non_auth_paths_are_not_limited() -> None:
             for _ in range(5):
                 response = await scoped.get("/api/")
                 assert response.status_code == 200
+
+
+async def test_refresh_and_logout_are_rate_limited() -> None:
+    """L3: token endpoints were the unguarded siblings of register/login."""
+    app = _limited_app(1)
+    transport = httpx.ASGITransport(app=app, client=("198.51.100.5", 9999))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as scoped:
+            first = await scoped.post("/api/auth/refresh", json={"refresh_token": "x"})
+            second = await scoped.post("/api/auth/refresh", json={"refresh_token": "x"})
+            assert first.status_code == 401  # rejected — but the attempt counts
+            assert second.status_code == 429
+            assert second.json()["kind"] == "RATE_LIMITED"
+
+
+# --- H1: proxy-mode identity must not be client-spoilable --------------------
+
+
+def test_identity_ignores_xff_without_trusted_proxy() -> None:
+    scope = {
+        "client": ("198.51.100.5", 9999),
+        "headers": [(b"x-forwarded-for", b"1.2.3.4")],
+    }
+    assert rate_limit_identity(scope, trusted_proxy=False) == "198.51.100.5"
+
+
+def test_identity_keys_on_rightmost_xff_hop() -> None:
+    """Standard XFF semantics: proxies append to the right — the rightmost
+    entry is the address the trusted proxy observed."""
+    scope = {
+        "client": ("10.0.0.1", 9999),
+        "headers": [(b"x-forwarded-for", b"1.2.3.4, 198.51.100.5")],
+    }
+    assert rate_limit_identity(scope, trusted_proxy=True) == "198.51.100.5"
+
+
+def test_identity_falls_back_to_socket_on_unparseable_xff() -> None:
+    scope = {
+        "client": ("10.0.0.1", 9999),
+        "headers": [(b"x-forwarded-for", b"not-an-ip, also bad")],
+    }
+    assert rate_limit_identity(scope, trusted_proxy=True) == "10.0.0.1"
+
+
+def test_identity_falls_back_to_socket_without_xff() -> None:
+    scope = {"client": ("10.0.0.1", 9999), "headers": []}
+    assert rate_limit_identity(scope, trusted_proxy=True) == "10.0.0.1"
+
+
+async def test_spoofed_leftmost_xff_does_not_bypass_limit() -> None:
+    """H1 regression: the client-controlled leftmost XFF value must not mint
+    a fresh rate-limit key per request."""
+    app = _limited_app(1, trusted_proxy=True)
+    transport = httpx.ASGITransport(app=app, client=("10.0.0.1", 9999))
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as scoped:
+            payload = {"email": "spoof@example.com", "password": "whatever-123"}
+            # Attacker rotates a fresh leftmost entry per request; the trusted
+            # proxy appends the real client IP — the key must not change.
+            r1 = await scoped.post(
+                "/api/auth/login",
+                json=payload,
+                headers={"X-Forwarded-For": "1.2.3.4, 198.51.100.5"},
+            )
+            r2 = await scoped.post(
+                "/api/auth/login",
+                json=payload,
+                headers={"X-Forwarded-For": "5.6.7.8, 198.51.100.5"},
+            )
+            assert r1.status_code == 401
+            assert r2.status_code == 429  # same rightmost hop → same key
 
 
 async def test_trusted_proxy_isolates_forwarded_clients() -> None:

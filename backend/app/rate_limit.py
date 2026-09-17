@@ -21,6 +21,11 @@ class RateLimitExceeded(Exception):
 class SlidingWindowLimiter:
     """Fixed-count sliding window keyed by arbitrary string (e.g. ``path:ip``)."""
 
+    # Bound on distinct tracked keys — with sane identity this never trips;
+    # it caps memory growth if a deployment ever keys on attacker-controlled
+    # space again (L2).
+    MAX_KEYS = 10_000
+
     def __init__(
         self,
         limit: int,
@@ -38,6 +43,8 @@ class SlidingWindowLimiter:
         """Count one hit or raise :class:`RateLimitExceeded` with the retry window."""
         now = self._clock()
         with self._lock:
+            if key not in self._hits and len(self._hits) >= self.MAX_KEYS:
+                self._hits.pop(next(iter(self._hits)))  # evict oldest-inserted
             hits = self._hits.setdefault(key, deque())
             while hits and (now - hits[0] > self._window):
                 hits.popleft()
