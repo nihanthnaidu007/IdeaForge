@@ -247,6 +247,33 @@ describe("DraftQueue", () => {
     );
   });
 
+  it("keeps a preselected draft through the closed-picker wipe and shows the target chip", async () => {
+    mockQueue({ board: [boardIdea()] });
+    render(
+      <MemoryRouter>
+        <DraftQueue preselected={boardIdea()} onPreselectedConsumed={vi.fn()} />
+      </MemoryRouter>,
+    );
+    const chip = await screen.findByTestId("schedule-target-chip");
+    expect(chip).toHaveTextContent("Agents eat SaaS");
+    // The bubble wipe would have reset ideaId before the fix — submit stays armed.
+    expect(screen.getByTestId("schedule-submit-btn")).toBeEnabled();
+  });
+
+  it("clears the preselected draft from the target chip", async () => {
+    const user = userEvent.setup();
+    mockQueue({ board: [boardIdea()] });
+    render(
+      <MemoryRouter>
+        <DraftQueue preselected={boardIdea()} onPreselectedConsumed={vi.fn()} />
+      </MemoryRouter>,
+    );
+    await screen.findByTestId("schedule-target-chip");
+    await user.click(screen.getByTestId("schedule-target-clear"));
+    expect(screen.queryByTestId("schedule-target-chip")).not.toBeInTheDocument();
+    expect(screen.getByTestId("schedule-submit-btn")).toBeDisabled();
+  });
+
   it("renders due reminders with open/snooze/mark-read and marks read", async () => {
     const user = userEvent.setup();
     mockQueue({

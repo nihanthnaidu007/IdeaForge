@@ -74,7 +74,10 @@ export default function BoardPage() {
   }, [previewIdea]);
 
   const scheduleIdea = useCallback((idea) => {
-    setScheduleTarget(idea);
+    // Shallow copy: a fresh identity per click re-fires the schedule form's
+    // preselect effect even when the same card is picked twice (e.g. after
+    // clearing the target chip).
+    setScheduleTarget({ ...idea });
     document
       .getElementById("queue-section")
       ?.scrollIntoView({ behavior: "smooth", block: "start" });

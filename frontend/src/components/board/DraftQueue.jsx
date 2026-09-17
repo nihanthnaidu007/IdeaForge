@@ -43,6 +43,8 @@ export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) 
     if (date) setWhen(localInputValue(date));
   };
 
+  const selectedIdea = ideas.find((idea) => idea.id === ideaId);
+
   const submit = async (e) => {
     e.preventDefault();
     if (!ideaId || !when) return;
@@ -79,7 +81,10 @@ export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) 
           <label htmlFor="schedule-idea" className="text-sm text-zinc-300 block">
             Draft
           </label>
-          <Select value={ideaId} onValueChange={setIdeaId}>
+          {/* Radix's hidden bubble select wipes a programmatic value that has no
+              mounted <option> (picker content is closed) by dispatching a change
+              with "" — ignore empty writes; items always carry a real id. */}
+          <Select value={ideaId} onValueChange={(v) => v && setIdeaId(v)}>
             <SelectTrigger id="schedule-idea" data-testid="schedule-idea-select" className="bg-void border-white/10 text-white">
               <SelectValue placeholder="Pick a draft…" />
             </SelectTrigger>
@@ -107,6 +112,26 @@ export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) 
           <p className="text-xs text-zinc-500">Times are your local timezone.</p>
         </div>
       </div>
+
+      {/* The picker can't display a value set programmatically while it's closed
+          (its option list only mounts on open), so the actual target is stated
+          here — never just implied by a placeholder. */}
+      {selectedIdea && (
+        <div data-testid="schedule-target-chip" className="flex items-center gap-2 text-sm">
+          <CalendarClock className="w-4 h-4 text-lime" aria-hidden="true" />
+          <span className="text-zinc-400">Scheduling:</span>
+          <span className="text-white truncate max-w-80">“{selectedIdea.topic_title}”</span>
+          <button
+            type="button"
+            data-testid="schedule-target-clear"
+            aria-label="Clear the selected draft"
+            onClick={() => setIdeaId("")}
+            className="text-zinc-500 hover:text-white text-xs px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-zinc-500">Quick picks:</span>
