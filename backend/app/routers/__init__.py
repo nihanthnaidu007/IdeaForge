@@ -10,6 +10,7 @@ from app.routers import (
     ideas,
     posts,
     preferences,
+    queue,
     research,
     saved,
 )
@@ -24,3 +25,4 @@ api_router.include_router(saved.router)
 api_router.include_router(preferences.router)
 api_router.include_router(analytics.router)
 api_router.include_router(board.router)
+api_router.include_router(queue.router)
