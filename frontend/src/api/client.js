@@ -215,7 +215,11 @@ client.interceptors.response.use(
 
     // Session expired: refresh once (single-flight), then retry. A failed
     // refresh means the session is truly dead — notify handlers and reject.
+    // Provider-key 401s (backend kind PROVIDER_AUTH, carrying a provider
+    // attribution) are NOT session failures: no refresh can fix a rejected
+    // key, and logging the user out over one would be dishonest UX.
     if (
+      !isProviderAuthFailure(normalized) &&
       normalized.status === 401 &&
       !isAuthUrl &&
       !original._refreshRetried
@@ -232,10 +236,22 @@ client.interceptors.response.use(
       }
     }
 
-    if (normalized.status === 401 && unauthorizedHandler) unauthorizedHandler(normalized);
+    if (
+      normalized.status === 401 &&
+      !isProviderAuthFailure(normalized) &&
+      unauthorizedHandler
+    )
+      unauthorizedHandler(normalized);
     return Promise.reject(normalized);
   }
 );
+
+// A provider-attributed 401 (PROVIDER_AUTH) means the user's BYOK key was
+// rejected — the session itself is fine. Session 401s from the auth
+// dependency never carry a provider field.
+export function isProviderAuthFailure(err) {
+  return err?.status === 401 && err?.kind === ERROR_KINDS.AUTH && err?.provider != null;
+}
 
 async function request(method, url, data, config) {
   try {
