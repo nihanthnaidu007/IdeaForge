@@ -18,11 +18,15 @@ export const ERROR_KINDS = {
   MISSING_KEY: "missing_key",
   AUTH: "auth",
   QUOTA: "quota",
+  RATE_LIMITED: "rate_limited",
+  RESEARCH_FAILED: "research_failed",
+  GENERATION_FAILED: "generation_failed",
   UNAVAILABLE: "unavailable",
-  PROVIDER: "provider",
-  RATE_LIMIT: "rate_limit",
   VALIDATION: "validation",
+  CONFLICT: "conflict",
+  NOT_FOUND: "not_found",
   NETWORK: "network",
+  SERVER: "server",
   UNKNOWN: "unknown",
 };
 
@@ -30,20 +34,22 @@ const KIND_BY_STATUS = {
   401: ERROR_KINDS.AUTH,
   402: ERROR_KINDS.QUOTA,
   403: ERROR_KINDS.AUTH,
-  429: ERROR_KINDS.RATE_LIMIT,
-  502: ERROR_KINDS.PROVIDER,
+  404: ERROR_KINDS.NOT_FOUND,
+  409: ERROR_KINDS.CONFLICT,
+  429: ERROR_KINDS.RATE_LIMITED,
   503: ERROR_KINDS.UNAVAILABLE,
 };
 
-// Backend error codes (provider layer) map 1:1 to kinds; unknown/absent codes
+// Backend error codes (provider layer) map to kinds; unknown/absent codes
 // fall back to status-based mapping.
 const KIND_BY_CODE = {
   MISSING_KEYS: ERROR_KINDS.MISSING_KEY,
   PROVIDER_AUTH: ERROR_KINDS.AUTH,
   PROVIDER_QUOTA: ERROR_KINDS.QUOTA,
   PROVIDER_UNAVAILABLE: ERROR_KINDS.UNAVAILABLE,
-  RESEARCH_FAILED: ERROR_KINDS.PROVIDER,
-  GENERATION_FAILED: ERROR_KINDS.PROVIDER,
+  RESEARCH_FAILED: ERROR_KINDS.RESEARCH_FAILED,
+  GENERATION_FAILED: ERROR_KINDS.GENERATION_FAILED,
+  INTERNAL_ERROR: ERROR_KINDS.SERVER,
 };
 
 // Product-neutral fallback copy per kind. Server-provided detail (the honest
@@ -56,23 +62,34 @@ const FALLBACK_MESSAGE = {
     "Your provider account is out of credit — add balance or switch keys in Settings.",
   [ERROR_KINDS.UNAVAILABLE]:
     "The provider is temporarily unavailable — try again in a moment.",
-  [ERROR_KINDS.PROVIDER]:
-    "The provider failed to complete this request — try again.",
-  [ERROR_KINDS.RATE_LIMIT]: "Too many requests — slow down and try again.",
+  [ERROR_KINDS.RESEARCH_FAILED]:
+    "The research service didn't return usable results — try again.",
+  [ERROR_KINDS.GENERATION_FAILED]:
+    "The model's response wasn't usable after a retry — try again.",
+  [ERROR_KINDS.RATE_LIMITED]: "Too many requests — slow down and try again.",
   [ERROR_KINDS.VALIDATION]: "The request was rejected — adjust the input.",
+  [ERROR_KINDS.CONFLICT]:
+    "That already exists — try logging in instead of creating it again.",
+  [ERROR_KINDS.NOT_FOUND]: "That isn't here anymore.",
   [ERROR_KINDS.NETWORK]:
     "Can't reach the IdeaForge server — check your connection and try again.",
+  [ERROR_KINDS.SERVER]:
+    "IdeaForge's server hit an unexpected failure — try again.",
   [ERROR_KINDS.UNKNOWN]: "Something went wrong — try again.",
 };
 
 export class ApiError extends Error {
-  constructor({ status, kind, message, provider, detail }) {
+  constructor({ status, kind, message, provider, detail, code, requestId, retryAfter, fields }) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.kind = kind;
     this.provider = provider;
     this.detail = detail;
+    this.code = code;
+    this.requestId = requestId;
+    this.retryAfter = retryAfter;
+    this.fields = fields;
   }
 }
 
@@ -83,18 +100,40 @@ export function normalizeApiError(error) {
   if (error instanceof ApiError) return error;
 
   if (error?.response) {
-    const { status, data } = error.response;
+    const { status, data, headers } = error.response;
     const detail = typeof data?.detail === "string" ? data.detail : data?.detail?.message;
+    // The backend error envelope is {detail, kind, provider, request_id}
+    // (app/errors.py): kind names the taxonomy (RESEARCH_FAILED, ...); a
+    // plain `code` field is the alternate shape. Body kind wins, then code,
+    // then the status fallback.
     const code = data?.code ?? (typeof data?.detail === "object" ? data.detail?.code : undefined);
+    const bodyKind = typeof data?.kind === "string" ? data.kind : undefined;
     const kind =
+      (bodyKind && KIND_BY_CODE[bodyKind]) ||
       (code && KIND_BY_CODE[code]) ||
       KIND_BY_STATUS[status] ||
-      (status >= 500 ? ERROR_KINDS.PROVIDER : ERROR_KINDS.VALIDATION);
+      (status >= 500 ? ERROR_KINDS.SERVER : ERROR_KINDS.VALIDATION);
+    // 422 Pydantic bodies carry loc-pathed field errors — map them to a
+    // {path: message} object so forms can render inline messages.
+    const fields = Array.isArray(data?.detail)
+      ? Object.fromEntries(
+          data.detail
+            .filter((entry) => Array.isArray(entry?.loc) && entry.loc.length > 1)
+            .map((entry) => [entry.loc[entry.loc.length - 1], entry.msg ?? "Invalid value."]),
+        )
+      : undefined;
+    const retryAfter =
+      Number(headers?.["retry-after"]) || Number(data?.retry_after) || undefined;
+    const requestId = headers?.["x-request-id"] ?? data?.request_id ?? undefined;
     return new ApiError({
       status,
       kind,
       provider: data?.provider ?? (typeof data?.detail === "object" ? data.detail?.provider : undefined),
       detail: data?.detail,
+      code,
+      requestId,
+      retryAfter,
+      fields,
       message: data?.message || detail || FALLBACK_MESSAGE[kind],
     });
   }

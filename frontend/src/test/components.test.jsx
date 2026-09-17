@@ -26,11 +26,15 @@ vi.mock("@/api/client", () => ({
     MISSING_KEY: "missing_key",
     AUTH: "auth",
     QUOTA: "quota",
+    RATE_LIMITED: "rate_limited",
+    RESEARCH_FAILED: "research_failed",
+    GENERATION_FAILED: "generation_failed",
     UNAVAILABLE: "unavailable",
-    PROVIDER: "provider",
-    RATE_LIMIT: "rate_limit",
     VALIDATION: "validation",
+    CONFLICT: "conflict",
+    NOT_FOUND: "not_found",
     NETWORK: "network",
+    SERVER: "server",
     UNKNOWN: "unknown",
   },
   ApiError: class ApiError extends Error {
@@ -103,21 +107,23 @@ describe("componentization", () => {
     renderRoute("/dashboard");
     await screen.findByTestId("generate-ideas-btn");
 
-    // Fail the live research call with a typed error
+    // Fail the live research call with the backend's typed 502
     api.post.mockRejectedValueOnce(
       new ApiError({
         status: 502,
-        kind: ERROR_KINDS.PROVIDER,
-        message: "The provider failed to complete this request — try again.",
+        kind: ERROR_KINDS.RESEARCH_FAILED,
+        provider: "tavily",
+        message: "The research service didn't return usable results — try again.",
       })
     );
 
     await user.click(screen.getByTestId("generate-ideas-btn"));
 
-    // Honest failure — no fabricated trends, retry available
+    // Honest failure — no fabricated trends, retry available. §3.2 card copy.
     const errorState = await screen.findByTestId("error-state");
     expect(errorState).toBeInTheDocument();
-    expect(errorState).toHaveTextContent(/provider failed/i);
+    expect(errorState).toHaveTextContent(/Research failed\./i);
+    expect(errorState).toHaveTextContent(/Nothing was saved/i);
     expect(screen.getByTestId("error-retry-btn")).toBeInTheDocument();
 
     // Retry re-issues the research call (which chains into idea generation)

@@ -23,7 +23,7 @@ const VariantCompare = ({
     className="glass-card rounded-xl p-6 mb-8"
   >
     <h3 className="font-heading text-xl font-semibold text-white mb-2">
-      Add Your Personal Touch to Your {formatLabel(selectedFormat)} Post (Optional)
+      Add instructions for your {formatLabel(selectedFormat)} post (optional)
     </h3>
     <Textarea
       value={instructions}
@@ -40,13 +40,13 @@ const VariantCompare = ({
     >
       {crafting ? (
         <span className="flex items-center gap-2">
-          <RefreshCw className="w-4 h-4 animate-spin" />
-          Crafting...
+          <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />
+          Drafting…
         </span>
       ) : (
         <span className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4" />
-          Craft My Post
+          <Sparkles className="w-4 h-4" aria-hidden="true" />
+          Craft my post
         </span>
       )}
     </Button>
@@ -74,7 +74,7 @@ export const FormatPicker = ({ onSelect }) => (
         >
           <format.icon className="w-6 h-6 text-lime mb-2" />
           <p className="font-medium text-white">{format.name}</p>
-          <p className="text-xs text-white/50">{format.description}</p>
+          <p className="text-xs text-zinc-400">{format.description}</p>
         </button>
       ))}
     </div>

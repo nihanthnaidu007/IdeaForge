@@ -43,9 +43,9 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
             {idea.title}
           </h3>
           {expanded ? (
-            <ChevronUp className="w-5 h-5 text-white/40 flex-shrink-0" />
+            <ChevronUp className="w-5 h-5 text-zinc-400 flex-shrink-0" />
           ) : (
-            <ChevronDown className="w-5 h-5 text-white/40 flex-shrink-0" />
+            <ChevronDown className="w-5 h-5 text-zinc-400 flex-shrink-0" />
           )}
         </div>
 
@@ -56,7 +56,7 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
             <span className={`font-mono text-sm font-medium text-rating-${tier}`}>
               {idea.rating.toFixed(1)}
             </span>
-            <span className="text-white/40 text-sm">/ 10</span>
+            <span className="text-zinc-400 text-sm">/ 10</span>
           </div>
           <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
             <div
@@ -79,23 +79,26 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
           >
             <div className="px-4 pb-4 space-y-4 border-t border-white/5 pt-4">
               {/* Rating Explanation */}
-              <p className="text-white/60 text-sm italic">&ldquo;{idea.rating_explanation}&rdquo;</p>
+              <p className="text-zinc-400 text-sm italic">&ldquo;{idea.rating_explanation}&rdquo;</p>
 
               {/* Insights */}
               {!insights || insights.status === "loading" ? (
                 <div className="space-y-2" data-testid={`insights-loading-${index}`}>
+                  <p className="text-zinc-400 text-sm">Reading this idea from every angle…</p>
                   <LoadingSkeleton className="h-3 w-2/3" />
                   <LoadingSkeleton className="h-3 w-full" />
                   <LoadingSkeleton className="h-3 w-5/6" />
                 </div>
               ) : insights.status === "error" ? (
                 <div
-                  className="flex items-center justify-between gap-2 text-sm"
+                  className="text-sm"
                   data-testid={`insights-error-${index}`}
+                  role="alert"
                 >
-                  <span className="text-white/50">
-                    {insights.error?.message ?? "Couldn't load insights."}
-                  </span>
+                  <p className="text-white font-medium">Insight card failed.</p>
+                  <p className="text-zinc-400 mt-1">
+                    Nothing was saved. The idea itself is untouched — cards are additive.
+                  </p>
                   <Button
                     onClick={onRetryInsights}
                     data-testid={`retry-insights-${index}-btn`}
@@ -116,7 +119,7 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Target className="w-4 h-4 text-lime" />
-                      <span className="text-xs uppercase tracking-wider text-white/40">Targeted Audience</span>
+                      <span className="text-xs uppercase tracking-wider text-zinc-400">Targeted Audience</span>
                     </div>
                     <p className="text-white/80 text-sm">{insights.data.targeted_audience}</p>
                   </div>
@@ -124,7 +127,7 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Lightbulb className="w-4 h-4 text-lime" />
-                      <span className="text-xs uppercase tracking-wider text-white/40">Why It Matters</span>
+                      <span className="text-xs uppercase tracking-wider text-zinc-400">Why It Matters</span>
                     </div>
                     <p className="text-white/80 text-sm">{insights.data.why_it_matters}</p>
                   </div>
@@ -132,7 +135,7 @@ const IdeaCard = ({ idea, index, expanded, onToggle, insights, onExplore, onSave
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <ListChecks className="w-4 h-4 text-lime" />
-                      <span className="text-xs uppercase tracking-wider text-white/40">Key Aspects to Cover</span>
+                      <span className="text-xs uppercase tracking-wider text-zinc-400">Key Aspects to Cover</span>
                     </div>
                     <ul className="space-y-1">
                       {insights.data.key_aspects?.map((aspect, i) => (

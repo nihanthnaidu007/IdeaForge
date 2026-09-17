@@ -27,7 +27,7 @@ const PostPreview = ({
     animate={{ opacity: 1, y: 0 }}
     className="glass-card rounded-xl p-6 animate-post-reveal"
   >
-    <div className="flex flex-wrap items-center gap-2 mb-4 text-sm text-white/50">
+    <div className="flex flex-wrap items-center gap-2 mb-4 text-sm text-zinc-400">
       <span>Your LinkedIn Post</span>
       <span>·</span>
       <span className="capitalize">{formatLabel?.replace("-", " ")}</span>
@@ -48,7 +48,7 @@ const PostPreview = ({
           value={tweakInstruction}
           onChange={(e) => onTweakInstructionChange(e.target.value)}
           data-testid="tweak-input"
-          placeholder="What would you like to change?"
+          placeholder="Tell it what to change…"
           className="bg-void border-white/10 text-white"
         />
         <div className="flex gap-2">
@@ -77,8 +77,8 @@ const PostPreview = ({
           variant="outline"
           className="border-white/10 text-white hover:bg-white/5"
         >
-          <Copy className="w-4 h-4 mr-2" />
-          Copy Post
+          <Copy className="w-4 h-4 mr-2" aria-hidden="true" />
+          Copy
         </Button>
         <Button
           onClick={onRegenerate}
@@ -87,7 +87,7 @@ const PostPreview = ({
           variant="outline"
           className="border-white/10 text-white hover:bg-white/5"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${postLoading ? "animate-spin" : ""}`} />
+          <RefreshCw className={`w-4 h-4 mr-2 ${postLoading ? "animate-spin" : ""}`} aria-hidden="true" />
           Regenerate
         </Button>
         <Button
@@ -96,8 +96,8 @@ const PostPreview = ({
           variant="outline"
           className="border-white/10 text-white hover:bg-white/5"
         >
-          <Edit3 className="w-4 h-4 mr-2" />
-          Tweak It
+          <Edit3 className="w-4 h-4 mr-2" aria-hidden="true" />
+          Tweak
         </Button>
         <Button
           onClick={onSave}
@@ -105,7 +105,7 @@ const PostPreview = ({
           variant="outline"
           className="border-white/10 text-white hover:bg-white/5"
         >
-          <Bookmark className="w-4 h-4 mr-2" />
+          <Bookmark className="w-4 h-4 mr-2" aria-hidden="true" />
           Save
         </Button>
       </div>

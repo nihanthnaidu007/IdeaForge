@@ -34,29 +34,29 @@ const Navbar = ({ title, backTo, center, onRequireAuth }) => {
       <button
         onClick={() => goTo("/saved")}
         data-testid="nav-saved-btn"
-        className="p-2 text-white/60 hover:text-white transition-colors"
+        className="p-2 text-zinc-400 hover:text-white transition-colors"
         title="Saved Ideas"
         aria-label="Saved Ideas"
       >
-        <FolderOpen className="w-5 h-5" />
+        <FolderOpen className="w-5 h-5" aria-hidden="true" />
       </button>
       <button
         onClick={() => goTo("/settings")}
         data-testid="nav-settings-btn"
-        className="p-2 text-white/60 hover:text-white transition-colors"
+        className="p-2 text-zinc-400 hover:text-white transition-colors"
         title="Settings"
         aria-label="Settings"
       >
-        <SettingsIcon className="w-5 h-5" />
+        <SettingsIcon className="w-5 h-5" aria-hidden="true" />
       </button>
       <button
         onClick={logout}
         data-testid="nav-logout-btn"
-        className="p-2 text-white/60 hover:text-red-400 transition-colors"
+        className="p-2 text-zinc-400 hover:text-red-400 transition-colors"
         title="Logout"
         aria-label="Logout"
       >
-        <LogOut className="w-5 h-5" />
+        <LogOut className="w-5 h-5" aria-hidden="true" />
       </button>
     </div>
   ) : (
@@ -65,16 +65,24 @@ const Navbar = ({ title, backTo, center, onRequireAuth }) => {
         variant="ghost"
         onClick={() => requireAuth("login")}
         data-testid="nav-login-btn"
-        className="text-white/70 hover:text-white"
+        className="text-zinc-400 hover:text-white"
       >
-        Sign In
+        Log in
       </Button>
       <Button
+        variant="ghost"
         onClick={() => requireAuth("signup")}
         data-testid="nav-signup-btn"
-        className="bg-lime text-void hover:bg-lime-hover btn-glow"
+        className="text-zinc-400 hover:text-white"
       >
-        Get Started
+        Register
+      </Button>
+      <Button
+        onClick={() => requireAuth("login")}
+        data-testid="nav-open-app-btn"
+        className="bg-lime text-void hover:bg-lime-hover"
+      >
+        Open the app
       </Button>
     </div>
   );
@@ -87,7 +95,7 @@ const Navbar = ({ title, backTo, center, onRequireAuth }) => {
             <button
               onClick={() => goTo(backTo)}
               data-testid="back-btn"
-              className="p-2 text-white/60 hover:text-white transition-colors"
+              className="p-2 text-zinc-400 hover:text-white transition-colors"
               title="Back"
               aria-label="Go back"
             >
