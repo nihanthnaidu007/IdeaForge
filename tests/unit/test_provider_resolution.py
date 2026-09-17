@@ -7,8 +7,11 @@ env, else typed 400 with per-provider setup guidance. Decrypt failures map to
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from app.deps import get_llm
+from app.logging_setup import request_id_var
 from app.services.llm.anthropic_client import AnthropicLLM
 from app.services.llm.openai_client import OpenAILLM
 from app.services.llm.provider import (
@@ -78,14 +81,56 @@ async def test_decrypt_failure_is_401_and_audited(fake_db) -> None:
     await fake_db.user_preferences.insert_one(
         {"user_id": "user-1", "keys": {"openai": blob}}
     )
-    with pytest.raises(ProviderAuthError) as excinfo:
-        await resolve_user_key(fake_db, vault, "user-1", "openai", make_settings())
+    token = request_id_var.set("req-fail-1")
+    try:
+        with pytest.raises(ProviderAuthError) as excinfo:
+            await resolve_user_key(fake_db, vault, "user-1", "openai", make_settings())
+    finally:
+        request_id_var.reset(token)
     assert excinfo.value.status_code == 401
     audit_rows = list(fake_db.key_audit.docs.values())
     assert len(audit_rows) == 1
     assert audit_rows[0]["event"] == "use_failure"
     assert audit_rows[0]["provider"] == "openai"
     assert audit_rows[0]["user_id"] == "user-1"
+    assert audit_rows[0]["request_id"] == "req-fail-1"
+
+
+async def test_byok_use_success_is_audited_with_request_id(fake_db) -> None:
+    """M5: every successful BYOK consumption records a 'used' event carrying
+    the active request id — the ledger shows usage, not only failures, and
+    never key material."""
+    vault = _vault()
+    await _store_key(fake_db, vault, "user-1", "openai", USER_KEY)
+    token = request_id_var.set("req-ok-1")
+    try:
+        resolved = await resolve_user_key(
+            fake_db, vault, "user-1", "openai", make_settings()
+        )
+    finally:
+        request_id_var.reset(token)
+    assert resolved == USER_KEY
+
+    audit_rows = list(fake_db.key_audit.docs.values())
+    assert len(audit_rows) == 1
+    assert audit_rows[0]["event"] == "used"
+    assert audit_rows[0]["provider"] == "openai"
+    assert audit_rows[0]["user_id"] == "user-1"
+    assert audit_rows[0]["request_id"] == "req-ok-1"
+    # Secret-free audit: no key material may leak into the ledger.
+    assert USER_KEY not in json.dumps(audit_rows[0], default=str)
+
+
+async def test_byok_use_success_outside_request_has_empty_request_id(
+    fake_db,
+) -> None:
+    """The correlation field is always present; it is empty when no request
+    context exists (scripts, workers) rather than absent."""
+    vault = _vault()
+    await _store_key(fake_db, vault, "user-1", "openai", USER_KEY)
+    await resolve_user_key(fake_db, vault, "user-1", "openai", make_settings())
+    audit_rows = list(fake_db.key_audit.docs.values())
+    assert audit_rows[0]["request_id"] == ""
 
 
 async def test_get_llm_builds_correct_client_per_provider(fake_db) -> None:

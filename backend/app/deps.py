@@ -45,6 +45,7 @@ def get_http_client(request: Request) -> Any:
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     settings: Settings = Depends(get_settings_dep),
+    db: Any = Depends(get_db),
 ) -> dict[str, str]:
     try:
         payload = jwt.decode(
@@ -57,6 +58,17 @@ async def get_current_user(
 
     # Refresh tokens share the signing secret; they must never authenticate.
     if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    # H2: token_version revocation (the spec's mechanism). One indexed
+    # find_one per authenticated request; a token whose ``ver`` claim lags
+    # the users doc was issued before a logout/compromise response and is dead.
+    user = await db.users.find_one(
+        {"id": payload["user_id"]}, {"_id": 0, "token_version": 1}
+    )
+    if user is None or int(payload.get("ver", 0)) != int(
+        user.get("token_version", 0)
+    ):
         raise HTTPException(status_code=401, detail="Invalid token")
     return {"user_id": payload["user_id"], "email": payload["email"]}
 

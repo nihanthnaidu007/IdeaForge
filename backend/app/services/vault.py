@@ -28,6 +28,16 @@ class VaultDecryptionError(Exception):
     """Ciphertext failed to decrypt (tampered, foreign AAD, or rotated master key)."""
 
 
+class VaultValidationError(Exception):
+    """Plaintext rejected before encryption (fails the key-shape floor)."""
+
+
+# Defense-in-depth floor matching the router's minimum key length: nothing —
+# not even a caller that forgets to validate — may encrypt a degenerate secret
+# into the vault (L7).
+_MIN_PLAINTEXT_LENGTH = 8
+
+
 def subkey(master: bytes, provider: str) -> bytes:
     return HKDF(
         algorithm=hashes.SHA256(),
@@ -40,6 +50,10 @@ def subkey(master: bytes, provider: str) -> bytes:
 def encrypt_secret(
     master: bytes, user_id: str, provider: str, plaintext: str
 ) -> dict[str, object]:
+    if len(plaintext) < _MIN_PLAINTEXT_LENGTH:
+        raise VaultValidationError(
+            "API key too short to be valid — not encrypting into the vault."
+        )
     nonce = os.urandom(12)  # fresh per encryption, always
     aad = f"{user_id}:{provider}".encode()
     ciphertext = AESGCM(subkey(master, provider)).encrypt(

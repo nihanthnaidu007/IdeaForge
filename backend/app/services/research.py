@@ -13,7 +13,11 @@ from typing import Any
 
 import httpx
 
-from app.services.llm.provider import ProviderAuthError, ProviderError, ProviderQuotaError
+from app.services.llm.provider import (
+    ProviderAuthError,
+    ProviderError,
+    ProviderRateLimitedError,
+)
 
 _SEARCH_URL = "https://api.tavily.com/search"
 _SNIPPET_LENGTH = 300
@@ -90,11 +94,13 @@ class TavilyResearchService:
             response = await self._client.post(
                 _SEARCH_URL,
                 json={
-                    "api_key": self._api_key,
                     "query": query,
                     "max_results": self._max_results,
                     "include_raw_content": False,
                 },
+                # L6: the key rides the Authorization header (Tavily's current
+                # contract) — not the legacy body field.
+                headers={"Authorization": f"Bearer {self._api_key}"},
             )
         except httpx.TimeoutException as exc:
             raise ResearchError("Tavily request timed out — please retry.") from exc
@@ -108,7 +114,9 @@ class TavilyResearchService:
                 "Tavily rejected the API key — please check Settings.", provider="tavily"
             )
         if response.status_code == 429:
-            raise ProviderQuotaError(
+            # M3: a rate limit is a transient condition, not a billing event —
+            # 429 (retryable), never 402 PROVIDER_QUOTA.
+            raise ProviderRateLimitedError(
                 "Tavily rate limit hit — please retry shortly.", provider="tavily"
             )
         if response.status_code >= 400:

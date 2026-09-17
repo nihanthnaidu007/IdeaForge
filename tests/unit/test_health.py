@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 from app.main import create_app
 
+from tests.conftest import make_settings
 from tests.unit.fakes import FakeDatabase
 
 
@@ -45,3 +46,20 @@ async def test_every_response_carries_request_id(client) -> None:
 
     propagated = await client.get("/api/", headers={"X-Request-ID": "corr-123"})
     assert propagated.headers["x-request-id"] == "corr-123"
+
+
+async def test_prod_ignores_client_supplied_request_id() -> None:
+    """L4: a client-supplied X-Request-ID is unbounded attacker data headed
+    for a structured log line — production always uses server-generated ids."""
+    settings = make_settings(ENV="prod", CORS_ORIGINS="https://app.example.com")
+    app = create_app(settings=settings, db=FakeDatabase())
+    transport = httpx.ASGITransport(app=app)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as scoped:
+            response = await scoped.get(
+                "/api/", headers={"X-Request-ID": "attacker-controlled"}
+            )
+    assert response.headers.get("x-request-id")
+    assert response.headers["x-request-id"] != "attacker-controlled"

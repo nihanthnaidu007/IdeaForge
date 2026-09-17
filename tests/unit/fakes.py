@@ -149,6 +149,13 @@ class FakeCollection:
             "UpdateResult", (), {"modified_count": modified, "matched_count": modified}
         )()
 
+    async def update_many(
+        self, query: dict[str, Any], update: dict[str, Any]
+    ) -> Any:
+        # Same multi-doc semantics as update_one (pymongo distinguishes only
+        # via matched/modified counts); kept separate for surface honesty.
+        return await self.update_one(query, update)
+
     async def find_one_and_update(
         self,
         query: dict[str, Any],

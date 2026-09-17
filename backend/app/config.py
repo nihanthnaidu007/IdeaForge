@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # contract is fixed now.
     encryption_master_key: str = Field(validation_alias="ENCRYPTION_MASTER_KEY")
 
-    jwt_access_ttl_days: int = 7
+    # H2: short-lived access tokens. Revocation is enforced by token_version
+    # (checked against the users doc on every authenticated call) — a stolen
+    # access token dies at the next logout/compromise response, or within an
+    # hour regardless.
+    jwt_access_ttl_minutes: int = 60
     jwt_refresh_ttl_days: int = 30
     cors_origins: _CorsOrigins = []
     rate_limit_auth_per_minute: int = 10

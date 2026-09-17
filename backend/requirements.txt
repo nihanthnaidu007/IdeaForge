@@ -5,6 +5,8 @@ fastapi==0.110.1
 uvicorn==0.25.0
 pydantic==2.12.5
 pydantic-settings==2.15.0
+# EmailStr validation on the public auth models.
+email-validator==2.3.0
 # >=4.13 required for the async driver (pymongo.asynchronous); Motor is deprecated.
 pymongo==4.18.1
 dnspython==2.8.0

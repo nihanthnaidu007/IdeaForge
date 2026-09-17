@@ -6,6 +6,7 @@ pure ASGI so it adds no task switching and stays transparent to the lifespan.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 import uuid
@@ -21,16 +22,56 @@ from app.rate_limit import RateLimitExceeded, SlidingWindowLimiter
 
 logger = logging.getLogger(__name__)
 
-_AUTH_RATE_LIMIT_PATHS = ("/api/auth/register", "/api/auth/login")
+_AUTH_RATE_LIMIT_PATHS = (
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/refresh",
+    "/api/auth/logout",
+)
+
+
+def rate_limit_identity(scope: Scope, *, trusted_proxy: bool) -> str:
+    """Client identity for rate-limit keying.
+
+    H1: X-Forwarded-For is client-spoilable on the left — proxies append to
+    the right, so under a trusted proxy the rightmost entry is the client
+    address the trusted proxy observed. Keying on the leftmost value would
+    let an attacker rotate a fresh key per request and brute-force freely.
+    Unparseable or absent XFF falls back to the socket address.
+    """
+    client = scope.get("client")
+    socket_ip = client[0] if client else "unknown"
+    if not trusted_proxy:
+        return socket_ip
+    headers = dict(scope.get("headers", []))
+    forwarded = headers.get(b"x-forwarded-for")
+    if not forwarded:
+        return socket_ip
+    rightmost = forwarded.decode("latin-1").rsplit(",", 1)[-1].strip()
+    try:
+        ipaddress.ip_address(rightmost)
+    except ValueError:
+        return socket_ip  # junk header: never trust it for identity
+    return rightmost
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Assigns/propagates an X-Request-ID and emits one structured log line per request."""
 
+    def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
+        super().__init__(app)
+        self.settings = settings
+
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
-        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        request_id = uuid.uuid4().hex[:16]
+        client_id = request.headers.get("x-request-id")
+        if client_id and self.settings.env != "prod":
+            # L4: client-supplied ids are unbounded attacker data headed for a
+            # structured log line. Production always uses server-generated
+            # ids; dev keeps the echoed value (length-capped) for correlation.
+            request_id = client_id[:64]
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         try:
@@ -84,11 +125,5 @@ class AuthRateLimitMiddleware:
 
     def _key(self, scope: Scope) -> str:
         path = scope.get("path", "")
-        client = scope.get("client")
-        host = client[0] if client else "unknown"
-        if self.settings.trusted_proxy:
-            headers = dict(scope.get("headers", []))
-            forwarded = headers.get(b"x-forwarded-for")
-            if forwarded:
-                host = forwarded.split(b",")[0].decode().strip()
+        host = rate_limit_identity(scope, trusted_proxy=self.settings.trusted_proxy)
         return f"{path}:{host}"

@@ -13,10 +13,10 @@ below. What this module owns permanently:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from app.config import Settings
+from app.services.audit import build_key_audit_event
 from app.services.vault import Vault, VaultDecryptionError
 
 Provider = Literal["anthropic", "openai", "tavily"]
@@ -140,22 +140,21 @@ async def resolve_user_key(
     blob = ((prefs or {}).get("keys") or {}).get(provider)
     if blob:
         try:
-            return vault.decrypt(user_id, provider, blob)
+            api_key = vault.decrypt(user_id, provider, blob)
         except VaultDecryptionError as exc:
             # Audit the use-failure before surfacing it — decrypt failures are
             # exactly when a key may have been tampered with or orphaned.
             await db.key_audit.insert_one(
-                {
-                    "user_id": user_id,
-                    "provider": provider,
-                    "event": "use_failure",
-                    "at": datetime.now(UTC),
-                }
+                build_key_audit_event(user_id, provider, "use_failure")
             )
             raise ProviderAuthError(
                 "Stored API key could not be decrypted — please re-save it in Settings.",
                 provider=provider,
             ) from exc
+        # M5: BYOK use-success is audited with the request id, so the ledger
+        # shows every request that consumed this key — not only its failures.
+        await db.key_audit.insert_one(build_key_audit_event(user_id, provider, "used"))
+        return api_key
 
     env_key = getattr(settings, f"{provider}_api_key", None)
     if env_key:

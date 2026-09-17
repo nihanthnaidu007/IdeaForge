@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from app.services.llm.provider import ProviderAuthError, ProviderQuotaError
+from app.routers.preferences import _probe_key
+from app.services.llm.provider import ProviderAuthError, ProviderRateLimitedError
 from app.services.research import ResearchError, TavilyResearchService
 
 from tests.conftest import store_tavily_key
@@ -80,11 +81,55 @@ async def test_search_401_raises_provider_auth() -> None:
     await service.aclose()
 
 
-async def test_search_429_raises_provider_quota() -> None:
+async def test_search_429_raises_rate_limited_not_quota() -> None:
+    """M3: a rate limit is not a billing event — 429, never 402."""
     service = TavilyResearchService("k", http_client=FakeAsyncClient([FakeResponse(429)]))
-    with pytest.raises(ProviderQuotaError):
+    with pytest.raises(ProviderRateLimitedError):
         await service.search("AI")
     await service.aclose()
+
+
+async def test_tavily_429_classified_identically_on_both_paths(
+    monkeypatch,
+) -> None:
+    """M3: research and the settings test-key probe must agree on 429 —
+    both are transient rate limits (429), not quota (402)."""
+    service = TavilyResearchService("k", http_client=FakeAsyncClient([FakeResponse(429)]))
+    with pytest.raises(ProviderRateLimitedError):
+        await service.search("AI")
+    await service.aclose()
+
+    class _FakeProbeClient:
+        def __init__(self, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> None:
+            return None
+
+        async def post(self, url: str, **kwargs):
+            return FakeResponse(429)
+
+    monkeypatch.setattr(
+        "app.routers.preferences.httpx.AsyncClient", _FakeProbeClient
+    )
+    with pytest.raises(ProviderRateLimitedError):
+        await _probe_key("tavily", "k")
+
+
+async def test_tavily_uses_bearer_header_not_body_key() -> None:
+    """L6: the API key rides the Authorization header (Tavily's current
+    contract), never the legacy JSON body field."""
+    client = FakeAsyncClient([_ok_response()])
+    service = TavilyResearchService("tvly-secret-key", http_client=client)
+    await service.search("AI")
+    await service.aclose()
+
+    call = client.calls[0]
+    assert call["headers"]["Authorization"] == "Bearer tvly-secret-key"
+    assert "api_key" not in call["json"]
 
 
 async def test_search_500_raises_research_error() -> None:
