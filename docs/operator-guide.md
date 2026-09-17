@@ -1,12 +1,19 @@
 # Operator guide
 
+## Build status
+
+This guide describes the completed production rebuild on the
+[`release/production-rebuild`](https://github.com/nihanthnaidu007/IdeaForge/tree/release/production-rebuild)
+branch — the target state the build is checked against, not today's tree. What exists on
+that branch right now: repository hygiene, a CI scaffold, the Vite frontend, and
+documentation. Still landing in upcoming PRs: the `backend/app` package, the provider
+layer with the encrypted BYOK vault, Docker/Compose deployment, and the feature lanes.
+Track [release PR #2](https://github.com/nihanthnaidu007/IdeaForge/pull/2) for live
+progress.
+
 Running IdeaForge for real users. This covers configuration, deployment, the
 encryption model for user-provided API keys, and observability. For day-to-day product
 behavior, see [user-guide.md](user-guide.md).
-
-> These docs describe the production rebuild on the
-> [`release/production-rebuild`](https://github.com/nihanthnaidu007/IdeaForge/tree/release/production-rebuild)
-> branch.
 
 ## Architecture
 
