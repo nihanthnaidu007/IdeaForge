@@ -138,19 +138,24 @@ export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) 
 }
 
 export default function DraftQueue({ refreshKey, preselected, onPreselectedConsumed, onOpenPreview }) {
-  const [queue, setQueue] = useState(null); // { email_enabled, items }
+  const [queue, setQueue] = useState(null); // { email_enabled, items } — items are SCHEDULED ideas only
   const [notifications, setNotifications] = useState(null);
+  const [boardItems, setBoardItems] = useState(null); // all ideas — candidates for scheduling
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [queueData, notificationData] = await Promise.all([
+      // The queue view only carries scheduled ideas, so the schedule form's
+      // candidate list comes from the board — the full idea inventory.
+      const [queueData, notificationData, boardData] = await Promise.all([
         api.get("/queue"),
         api.get("/queue/notifications"),
+        api.get("/board"),
       ]);
       setQueue(queueData);
       setNotifications(notificationData);
+      setBoardItems(Array.isArray(boardData) ? boardData : []);
     } catch (err) {
       setError(err);
     }
@@ -205,7 +210,7 @@ export default function DraftQueue({ refreshKey, preselected, onPreselectedConsu
     );
   }
 
-  if (queue === null || notifications === null) {
+  if (queue === null || notifications === null || boardItems === null) {
     return (
       <div data-testid="queue-loading" className="space-y-3">
         <LoadingSkeleton className="h-20 w-full" />
@@ -341,7 +346,7 @@ export default function DraftQueue({ refreshKey, preselected, onPreselectedConsu
       <section data-testid="queue-schedule-section" className="space-y-4">
         <h3 className="font-heading text-sm text-zinc-300">Schedule a draft</h3>
         <ScheduleForm
-          ideas={queue.items.filter((idea) => !idea.scheduled_for)}
+          ideas={boardItems.filter((idea) => !idea.scheduled_for)}
           preselected={preselected}
           onScheduled={onPreselectedConsumed}
           queueRefresh={load}

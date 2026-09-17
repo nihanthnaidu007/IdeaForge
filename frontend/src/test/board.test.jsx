@@ -169,16 +169,19 @@ describe("ContentBoard", () => {
 // --- DraftQueue -----------------------------------------------------------------
 
 describe("DraftQueue", () => {
-  it("renders scheduled rows with absolute and relative times", async () => {
+  // DraftQueue reads three feeds: the scheduled queue, the notifications, and
+  // the board (schedule-form candidates come from the full idea inventory).
+  const mockQueue = ({ scheduled = [], notifications = [], board = null, emailEnabled = false } = {}) => {
     api.get.mockImplementation((url) => {
-      if (url === "/queue")
-        return Promise.resolve({
-          email_enabled: false,
-          items: [boardIdea({ status: "drafting", scheduled_for: "2099-01-01T09:00:00Z" })],
-        });
-      if (url === "/queue/notifications") return Promise.resolve([]);
+      if (url === "/queue") return Promise.resolve({ email_enabled: emailEnabled, items: scheduled });
+      if (url === "/queue/notifications") return Promise.resolve(notifications);
+      if (url === "/board") return Promise.resolve(board ?? scheduled);
       return Promise.resolve({});
     });
+  };
+
+  it("renders scheduled rows with absolute and relative times", async () => {
+    mockQueue({ scheduled: [boardIdea({ status: "drafting", scheduled_for: "2099-01-01T09:00:00Z" })] });
     render(<MemoryRouter><DraftQueue /></MemoryRouter>);
     expect(await screen.findByTestId("queue-row")).toHaveTextContent("Agents eat SaaS");
     expect(screen.getByTestId("queue-row-when")).toHaveTextContent("Jan 1");
@@ -188,11 +191,7 @@ describe("DraftQueue", () => {
   });
 
   it("states the email channel truthfully when email is enabled", async () => {
-    api.get.mockImplementation((url) => {
-      if (url === "/queue") return Promise.resolve({ email_enabled: true, items: [] });
-      if (url === "/queue/notifications") return Promise.resolve([]);
-      return Promise.resolve({});
-    });
+    mockQueue({ emailEnabled: true });
     render(<MemoryRouter><DraftQueue /></MemoryRouter>);
     expect(await screen.findByTestId("queue-channel-line")).toHaveTextContent(
       "Reminders fire in-app and by email for this deployment.",
@@ -200,11 +199,7 @@ describe("DraftQueue", () => {
   });
 
   it("renders the never-posts empty state", async () => {
-    api.get.mockImplementation((url) => {
-      if (url === "/queue") return Promise.resolve({ email_enabled: false, items: [] });
-      if (url === "/queue/notifications") return Promise.resolve([]);
-      return Promise.resolve({});
-    });
+    mockQueue({});
     render(<MemoryRouter><DraftQueue /></MemoryRouter>);
     expect(await screen.findByTestId("queue-empty")).toHaveTextContent(
       "IdeaForge never posts for you.",
@@ -214,12 +209,7 @@ describe("DraftQueue", () => {
   it("schedules a reminder with an ISO timestamp and confirms the absolute time", async () => {
     const { toast } = await import("sonner");
     const user = userEvent.setup();
-    api.get.mockImplementation((url) => {
-      if (url === "/queue")
-        return Promise.resolve({ email_enabled: false, items: [boardIdea()] });
-      if (url === "/queue/notifications") return Promise.resolve([]);
-      return Promise.resolve({});
-    });
+    mockQueue({ board: [boardIdea()] });
     api.post.mockResolvedValue(boardIdea({ scheduled_for: "2099-01-01T09:00:00Z" }));
     render(
       <MemoryRouter>
@@ -240,11 +230,7 @@ describe("DraftQueue", () => {
   it("rejects scheduling a past time before touching the API", async () => {
     const { toast } = await import("sonner");
     const user = userEvent.setup();
-    api.get.mockImplementation((url) => {
-      if (url === "/queue") return Promise.resolve({ email_enabled: false, items: [boardIdea()] });
-      if (url === "/queue/notifications") return Promise.resolve([]);
-      return Promise.resolve({});
-    });
+    mockQueue({ board: [boardIdea()] });
     render(
       <MemoryRouter>
         <DraftQueue preselected={boardIdea()} onPreselectedConsumed={vi.fn()} />
@@ -263,14 +249,11 @@ describe("DraftQueue", () => {
 
   it("renders due reminders with open/snooze/mark-read and marks read", async () => {
     const user = userEvent.setup();
-    api.get.mockImplementation((url) => {
-      if (url === "/queue")
-        return Promise.resolve({ email_enabled: false, items: [boardIdea({ scheduled_for: "2020-01-01T09:00:00Z" })] });
-      if (url === "/queue/notifications")
-        return Promise.resolve([
-          { id: "n_1", user_id: "user_1", idea_id: "idea_1", idea_title: "Agents eat SaaS", channel: "in_app", fired_at: "2026-09-17T09:00:00Z", read: false },
-        ]);
-      return Promise.resolve({});
+    mockQueue({
+      scheduled: [boardIdea({ status: "drafting", scheduled_for: "2020-01-01T09:00:00Z" })],
+      notifications: [
+        { id: "n_1", user_id: "user_1", idea_id: "idea_1", idea_title: "Agents eat SaaS", channel: "in_app", fired_at: "2026-09-17T09:00:00Z", read: false },
+      ],
     });
     render(<MemoryRouter><DraftQueue /></MemoryRouter>);
     expect(await screen.findByTestId("queue-reminder-card")).toHaveTextContent(
@@ -288,23 +271,13 @@ describe("DraftQueue", () => {
 
   it("unschedules a reminder", async () => {
     const user = userEvent.setup();
-    api.get.mockImplementation((url) => {
-      if (url === "/queue")
-        return Promise.resolve({
-          email_enabled: false,
-          items: [boardIdea({ scheduled_for: "2099-01-01T09:00:00Z" })],
-        });
-      if (url === "/queue/notifications") return Promise.resolve([]);
-      return Promise.resolve({});
-    });
+    mockQueue({ scheduled: [boardIdea({ scheduled_for: "2099-01-01T09:00:00Z" })] });
     api.delete.mockResolvedValue(boardIdea());
     render(<MemoryRouter><DraftQueue /></MemoryRouter>);
     await user.click(await screen.findByTestId("queue-unschedule-btn-idea_1"));
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith("/queue/idea_1/schedule"));
   });
 });
-
-// --- LinkedInPreviewPane ---------------------------------------------------------
 
 describe("LinkedInPreviewPane", () => {
   const clean = {
