@@ -5,6 +5,7 @@ import SkipLink from "@/components/layout/SkipLink";
 import TrendRadar from "@/components/dashboard/TrendRadar";
 import IdeaCard from "@/components/dashboard/IdeaCard";
 import VariantCompare, { FormatPicker } from "@/components/dashboard/VariantCompare";
+import HookPicker from "@/components/dashboard/HookPicker";
 import PostPreview from "@/components/dashboard/PostPreview";
 import { EmptyState, ErrorState, StaleBanner } from "@/components/states/AsyncStates";
 import { api } from "@/api/client";
@@ -146,6 +147,8 @@ const Dashboard = () => {
   const [variantsError, setVariantsError] = useState(null);
   const [tweakingIndex, setTweakingIndex] = useState(null);
   const [pickedIndex, setPickedIndex] = useState(null);
+  const [selectedHookId, setSelectedHookId] = useState(null);
+  const [hasSourcedTrends, setHasSourcedTrends] = useState(false);
   const [generatedPost, setGeneratedPost] = useState("");
   const [postLoading, setPostLoading] = useState(false);
   const [tweakMode, setTweakMode] = useState(false);
@@ -162,6 +165,7 @@ const Dashboard = () => {
     setExpandedId(null);
     setSelectedIdea(null);
     setSelectedFormat(null);
+    setSelectedHookId(null);
     setGeneratedPost("");
     setPickedIndex(null);
     setVariantSet(null);
@@ -182,6 +186,13 @@ const Dashboard = () => {
         trends: Array.isArray(research.raw_trends) ? research.raw_trends : [],
         researched_at: research.researched_at ?? new Date().toISOString(),
       };
+      // Source gate data for the Hook Picker (craft pack §6.2): a
+      // requires_source hook unlocks only when the trend context this idea
+      // was forged from carries at least one sourced claim. Unknown context
+      // (e.g. a page reload) keeps the conservative locked default.
+      setHasSourcedTrends(
+        (research?.raw_trends ?? []).some((t) => t?.url || t?.source),
+      );
       setScanningText("Forging ideas from your research…");
       setScanningSub("");
       // Step 2: scored idea generation
@@ -244,6 +255,7 @@ const Dashboard = () => {
   const selectIdea = (idea, index) => {
     setSelectedIdea({ ...idea, index });
     setSelectedFormat(null);
+    setSelectedHookId(null);
     setGeneratedPost("");
     setPickedIndex(null);
     setVariantSet(null);
@@ -266,6 +278,8 @@ const Dashboard = () => {
         insights: insights[selectedIdea.index]?.data || null,
         trends: lastResearchRef.current.trends,
         researched_at: lastResearchRef.current.researched_at,
+        // §1.3 hook injection: the selected pattern governs the first line.
+        hook_id: selectedHookId || null,
       });
       setVariantSet(data.variant_set);
       setVariantHint(data.cost_hint?.hint ?? null);
@@ -563,6 +577,18 @@ const Dashboard = () => {
             />
           )}
 
+          {/* §6.2 Hook Picker (select mode): gates requires_source hooks on
+              the trend context's sourced claims; the pick rides into
+              generate/regenerate as hook_id. */}
+          {selectedFormat && !generatedPost && (
+            <HookPicker
+              format={selectedFormat}
+              selectedHookId={selectedHookId}
+              onSelect={setSelectedHookId}
+              hasSourcedClaims={hasSourcedTrends}
+            />
+          )}
+
           {/* Generated Post — the picked variant, refined via /tweak-post */}
           {pickedIndex != null && generatedPost && (
             <PostPreview
@@ -582,6 +608,18 @@ const Dashboard = () => {
               onCopy={copyPost}
               onRegenerate={regenerateVariants}
               onSave={() => saveIdea(selectedIdea, selectedIdea.index, true)}
+            />
+          )}
+
+          {/* §6.2 Hook Picker (swap mode): on a live draft the picker swaps
+              the opening line and regenerates — §6.5 cost line rendered
+              inside the picker's own panel. */}
+          {generatedPost && selectedFormat && (
+            <HookPicker
+              format={selectedFormat}
+              originalPost={generatedPost}
+              onSwapped={(post) => setGeneratedPost(post)}
+              hasSourcedClaims={hasSourcedTrends}
             />
           )}
         </div>
