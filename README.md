@@ -20,7 +20,7 @@ Vite-built React frontend.
 | Layer    | Tech                                                        |
 | -------- | ----------------------------------------------------------- |
 | Backend  | FastAPI, MongoDB, JWT auth                                  |
-| Frontend | React 19, Tailwind, shadcn/ui (CRA build; Vite migration in progress) |
+| Frontend | React 19, Tailwind, shadcn/ui (Vite build) |
 | Research | Tavily API                                                  |
 | LLMs     | Anthropic Claude + OpenAI GPT on your own API keys          |
 
@@ -47,9 +47,9 @@ The API serves `http://127.0.0.1:8001/api/` — `GET /api/` returns
 
 ```bash
 cd frontend
-npm ci                        # lockfile is committed; .npmrc sets legacy-peer-deps for the CRA tree
-cp .env.example .env.local    # REACT_APP_BACKEND_URL=http://127.0.0.1:8001
-npm start
+npm install                   # lockfile is committed
+cp .env.example .env.local    # VITE_BACKEND_URL=http://127.0.0.1:8001
+npm run dev
 ```
 
 The app opens at `http://localhost:3000`.

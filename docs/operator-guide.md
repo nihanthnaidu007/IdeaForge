@@ -5,9 +5,9 @@
 This guide describes the completed production rebuild on the
 [`release/production-rebuild`](https://github.com/nihanthnaidu007/IdeaForge/tree/release/production-rebuild)
 branch — the target state the build is checked against, not today's tree. What exists on
-that branch right now: repository hygiene, a CI scaffold, the Vite frontend, and
-documentation. Still landing in upcoming PRs: the `backend/app` package, the provider
-layer with the encrypted BYOK vault, Docker/Compose deployment, and the feature lanes.
+that branch right now: repository hygiene, a CI scaffold, the Vite frontend, the backend
+app package, and documentation. Still landing in upcoming PRs: the provider layer with
+the encrypted BYOK vault, Docker/Compose deployment, and the feature lanes.
 Track [release PR #2](https://github.com/nihanthnaidu007/IdeaForge/pull/2) for live
 progress.
 
