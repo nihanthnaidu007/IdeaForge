@@ -137,7 +137,7 @@ const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemov
 
 const XIcon = () => <Check className="w-3 h-3 mr-1" aria-hidden="true" />;
 
-const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped, hasSourcedClaims = false }) => {
+const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped, hasSourcedClaims = false, idea = null, tone = "professional" }) => {
   const [phase, setPhase] = useState("loading"); // loading | error | ready
   const [hooks, setHooks] = useState([]);
   const [styleFilter, setStyleFilter] = useState("all");
@@ -187,8 +187,13 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
     setSwappingId(hook.id);
     try {
       const data = await api.post("/swap-hook", {
+        // SwapHookRequest contract: original_post, hook_id, idea, format, tone —
+        // the rewrite conditions the new opener on the same idea evidence.
         post: originalPost,
         hook_id: hook.id,
+        idea,
+        format: apiFormat,
+        tone,
       });
       onSwapped?.(data.post);
       toast.success(`Swapped in hook ${hook.id}`);

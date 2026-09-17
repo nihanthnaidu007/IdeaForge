@@ -618,6 +618,8 @@ const Dashboard = () => {
             <HookPicker
               format={selectedFormat}
               originalPost={generatedPost}
+              idea={selectedIdea}
+              tone={tone.toLowerCase()}
               onSwapped={(post) => setGeneratedPost(post)}
               hasSourcedClaims={hasSourcedTrends}
             />

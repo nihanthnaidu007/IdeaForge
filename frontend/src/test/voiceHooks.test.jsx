@@ -349,7 +349,14 @@ describe("HookPicker", () => {
     api.get.mockResolvedValue(hookListResponse);
     api.post.mockResolvedValue({ post: "Rewritten draft" });
     const onSwapped = vi.fn();
-    render(<HookPicker format="hot-take" originalPost="Current draft" onSwapped={onSwapped} />);
+    render(
+      <HookPicker
+        format="hot-take"
+        originalPost="Current draft"
+        idea={{ topic_title: "Eval debt" }}
+        onSwapped={onSwapped}
+      />,
+    );
 
     expect(await screen.findByTestId("hooks-swap-cost-hint")).toHaveTextContent(
       "New hook, new draft — runs one model call on your key",
@@ -359,6 +366,9 @@ describe("HookPicker", () => {
       expect(api.post).toHaveBeenCalledWith("/swap-hook", {
         post: "Current draft",
         hook_id: "H01",
+        idea: { topic_title: "Eval debt" },
+        format: "hot_take",
+        tone: "professional",
       });
       expect(onSwapped).toHaveBeenCalledWith("Rewritten draft");
     });
