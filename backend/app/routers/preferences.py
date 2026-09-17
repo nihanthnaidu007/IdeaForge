@@ -11,7 +11,6 @@ contain key material even by accident — the builders below return booleans and
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -21,6 +20,7 @@ from openai import AsyncOpenAI, OpenAIError
 
 from app.deps import get_current_user, get_db, get_settings_dep, get_vault
 from app.models.preferences import PreferencesUpdate
+from app.services.audit import build_key_audit_event
 from app.services.llm.anthropic_client import map_anthropic_error
 from app.services.llm.openai_client import map_openai_error
 from app.services.llm.provider import (
@@ -58,14 +58,7 @@ def _build_prefs_response(prefs: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _audit(db: Any, user_id: str, provider: str, event: str) -> None:
-    await db.key_audit.insert_one(
-        {
-            "user_id": user_id,
-            "provider": provider,
-            "event": event,
-            "at": datetime.now(UTC),
-        }
-    )
+    await db.key_audit.insert_one(build_key_audit_event(user_id, provider, event))
 
 
 async def _probe_key(provider: str, api_key: str) -> None:
@@ -241,6 +234,9 @@ async def test_key(
         ) from exc
 
     await _probe_key(provider, api_key)
+    # M5: use-success is an audit event too — the ledger records that this
+    # stored key validated successfully, not only that it failed.
+    await _audit(db, user_id, provider, "used")
     return {
         "provider": provider,
         "valid": True,
