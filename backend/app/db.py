@@ -32,6 +32,15 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_ideas_user_created",
         ),
         IndexModel([("id", ASCENDING)], name="uq_ideas_id", unique=True),
+        # Content Board: column grouping reads ideas per user+status; the
+        # reminder worker scans by scheduled_for to find due reminders.
+        IndexModel(
+            [("user_id", ASCENDING), ("status", ASCENDING)],
+            name="ix_ideas_user_status",
+        ),
+        IndexModel(
+            [("scheduled_for", ASCENDING)], name="ix_ideas_scheduled_for"
+        ),
     ],
     "refresh_tokens": [
         IndexModel([("token_hash", ASCENDING)], name="uq_refresh_hash", unique=True),
@@ -51,6 +60,13 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
         IndexModel(
             [("user_id", ASCENDING), ("at", DESCENDING)],
             name="ix_usage_user_at",
+        ),
+    ],
+    # In-app reminders (draft queue) list newest-first per user.
+    "notifications": [
+        IndexModel(
+            [("user_id", ASCENDING), ("fired_at", DESCENDING)],
+            name="ix_notifications_user_at",
         ),
     ],
 }

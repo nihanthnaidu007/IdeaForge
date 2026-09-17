@@ -23,6 +23,11 @@ from app.services.llm.provider import (
     ProviderUnavailableError,
 )
 from app.services.research import ResearchError
+from app.services.workflow_errors import (
+    InvalidScheduleTime,
+    InvalidTransition,
+    WorkflowError,
+)
 
 logger = logging.getLogger("app.errors")
 
@@ -34,6 +39,9 @@ _TYPED_ERRORS: tuple[type[Exception], ...] = (
     ProviderUnavailableError,
     ProviderError,
     ResearchError,
+    WorkflowError,
+    InvalidTransition,
+    InvalidScheduleTime,
 )
 
 

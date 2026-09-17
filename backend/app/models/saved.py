@@ -34,3 +34,11 @@ class SavedIdea(BaseModel):
     tone: str
     created_at: str
     is_bookmarked: bool = False
+    # Content Board pipeline (spec data model). Defaults keep pre-board docs
+    # valid: every stored idea without a status is in the Inbox.
+    status: str = "inbox"
+    tags: list[str] = Field(default_factory=list)
+    # Draft Queue: ISO-8601 UTC when a reminder is scheduled; reminder_fired_at
+    # is the dedup claim (None = not yet fired).
+    scheduled_for: str | None = None
+    reminder_fired_at: str | None = None
