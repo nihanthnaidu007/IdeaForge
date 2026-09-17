@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends
 
 from app.deps import get_current_user, get_db, get_llm, get_settings_dep, get_vault
 from app.models.ideas import GenerateIdeasRequest, IdeaInsightsRequest
+from app.models.research import TrendItem
 from app.services.llm.prompts import (
     CLAUDE_IDEA_GENERATION_PROMPT,
     CLAUDE_INSIGHTS_PROMPT,
@@ -23,10 +24,10 @@ from app.services.llm.provider import parse_json_output
 router = APIRouter()
 
 
-def _trends_text(raw_trends: list[dict[str, Any]]) -> str:
-    return "\n".join(
-        f"- {trend['title']}: {trend['snippet']}" for trend in raw_trends[:8]
-    )
+def _trends_text(raw_trends: list[TrendItem]) -> str:
+    # M4: rows are validated TrendItems, so direct attribute access is safe —
+    # raw dict indexing here turned a missing client key into a 500 KeyError.
+    return "\n".join(f"- {trend.title}: {trend.snippet}" for trend in raw_trends[:8])
 
 
 @router.post("/generate-ideas")
