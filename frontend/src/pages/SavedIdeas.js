@@ -1,84 +1,84 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { toast } from "sonner";
-import { useAuth, API } from "../App";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import Navbar from "@/components/layout/Navbar";
+import { EmptyState, ErrorState, SkeletonCardGrid } from "@/components/states/AsyncStates";
+import AiBadge from "@/components/common/AiBadge";
+import { api } from "@/api/client";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "../components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
-  Sparkles,
   Star,
   Bookmark,
   BookmarkCheck,
   Trash2,
   Copy,
   Search,
-  ArrowLeft,
   FileText,
   Calendar,
-  X,
 } from "lucide-react";
 
 const SavedIdeas = () => {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  useAuth(); // auth guard is handled by ProtectedRoute
   const [ideas, setIdeas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("loading"); // loading | error | ready
+  const [loadError, setLoadError] = useState(null);
   const [filter, setFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIdea, setSelectedIdea] = useState(null);
 
-  const headers = { Authorization: `Bearer ${token}` };
+  const fetchIdeas = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const data = await api.get("/saved");
+      setIdeas(data);
+      setStatus("ready");
+    } catch (error) {
+      setLoadError(error);
+      setStatus("error");
+    }
+  }, []);
 
   useEffect(() => {
     fetchIdeas();
-  }, []);
-
-  const fetchIdeas = async () => {
-    try {
-      const res = await axios.get(`${API}/saved`, { headers });
-      setIdeas(res.data);
-    } catch (error) {
-      toast.error("Failed to load saved ideas");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchIdeas]);
 
   const toggleBookmark = async (id) => {
     try {
-      const res = await axios.patch(`${API}/saved/${id}/bookmark`, {}, { headers });
-      setIdeas(ideas.map(idea => 
-        idea.id === id ? { ...idea, is_bookmarked: res.data.is_bookmarked } : idea
+      const data = await api.patch(`/saved/${id}/bookmark`, {});
+      setIdeas(ideas.map((idea) =>
+        idea.id === id ? { ...idea, is_bookmarked: data.is_bookmarked } : idea
       ));
-      toast.success(res.data.is_bookmarked ? "Bookmarked!" : "Bookmark removed");
+      toast.success(data.is_bookmarked ? "Bookmarked!" : "Bookmark removed");
     } catch (error) {
-      toast.error("Failed to update bookmark");
+      toast.error(error.message);
     }
   };
 
   const deleteIdea = async (id) => {
     try {
-      await axios.delete(`${API}/saved/${id}`, { headers });
-      setIdeas(ideas.filter(idea => idea.id !== id));
+      await api.delete(`/saved/${id}`);
+      setIdeas(ideas.filter((idea) => idea.id !== id));
       toast.success("Idea deleted");
     } catch (error) {
-      toast.error("Failed to delete idea");
+      toast.error(error.message);
     }
   };
 
@@ -89,12 +89,12 @@ const SavedIdeas = () => {
 
   // Filter and sort ideas
   const filteredIdeas = ideas
-    .filter(idea => {
+    .filter((idea) => {
       if (filter === "bookmarked") return idea.is_bookmarked;
       if (filter === "with-post") return idea.generated_post;
       return true;
     })
-    .filter(idea => 
+    .filter((idea) =>
       idea.topic_title.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
@@ -106,24 +106,7 @@ const SavedIdeas = () => {
 
   return (
     <div className="min-h-screen bg-void">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-void/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/dashboard")}
-              data-testid="back-btn"
-              className="p-2 text-white/60 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-lime" />
-              <span className="font-heading font-bold text-lg text-white">Saved Ideas</span>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <Navbar title="Saved Ideas" backTo="/dashboard" />
 
       {/* Main Content */}
       <main className="pt-20 pb-12 px-6">
@@ -174,18 +157,21 @@ const SavedIdeas = () => {
             </div>
           </div>
 
-          {/* Ideas Grid */}
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-loading-pulse text-lime">Loading...</div>
-            </div>
+          {/* Ideas Grid — explicit loading / error / empty / ready states */}
+          {status === "loading" ? (
+            <SkeletonCardGrid testId="saved-ideas-skeleton" />
+          ) : status === "error" ? (
+            <ErrorState
+              error={loadError}
+              onRetry={fetchIdeas}
+              title="Couldn't load saved ideas"
+            />
           ) : filteredIdeas.length === 0 ? (
-            <div className="text-center py-20">
-              <FileText className="w-16 h-16 text-white/10 mx-auto mb-4" />
-              <h3 className="font-heading text-xl text-white mb-2">No saved ideas yet</h3>
-              <p className="text-white/50 mb-6">
-                Generate your first idea on the dashboard.
-              </p>
+            <EmptyState
+              icon={FileText}
+              title="No saved ideas yet"
+              description="Generate your first idea on the dashboard."
+            >
               <Button
                 onClick={() => navigate("/dashboard")}
                 data-testid="go-to-dashboard-btn"
@@ -193,7 +179,7 @@ const SavedIdeas = () => {
               >
                 Go to Dashboard
               </Button>
-            </div>
+            </EmptyState>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
               {filteredIdeas.map((idea, index) => (
@@ -329,7 +315,10 @@ const SavedIdeas = () => {
               {/* Post */}
               {selectedIdea.generated_post && (
                 <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-white/40">Generated Post</p>
+                  <div className="flex items-center gap-2">
+                    <AiBadge />
+                    <p className="text-xs uppercase tracking-wider text-white/40">Generated Post</p>
+                  </div>
                   <div className="bg-void rounded-lg p-4 border border-white/5">
                     <pre className="text-white/90 font-mono text-sm whitespace-pre-wrap">
                       {selectedIdea.generated_post}

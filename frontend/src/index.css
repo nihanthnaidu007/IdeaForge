@@ -4,26 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens — single source of truth is frontend/tailwind.config.js
+   (colors.lime/void/deep/panel/rating). Only the vars the scrollbar needs
+   live here; their values mirror the tailwind tokens and must be kept in
+   sync. The shadcn HSL layer further down mirrors the same brand tokens
+   (lime ≈ hsl(72 92% 62%), background ≈ void) for the ui primitives. */
 :root {
-  --bg-void: #050508;
-  --bg-deep: #08090f;
-  --bg-panel: #0c0e17;
-  --bg-card: #10121c;
-  --bg-card-hover: #141720;
-  --border-dim: #1c1f2e;
+  --bg-deep: #0a0a0c; /* tailwind colors.deep */
   --border-mid: #252840;
   --border-active: #4f52a0;
-  --text-primary: #e8eaf6;
-  --text-secondary: #8b8fa8;
-  --text-muted: #4a4d63;
-  --accent-primary: #D4F844;
-  --accent-glow: rgba(212, 248, 68, 0.15);
-  --green: #22c55e;
-  --green-glow: rgba(34, 197, 94, 0.12);
-  --amber: #f59e0b;
-  --amber-glow: rgba(245, 158, 11, 0.12);
-  --red: #ef4444;
-  --mono: #a5b4fc;
 }
 
 body {
@@ -31,8 +20,10 @@ body {
   font-family: 'DM Mono', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg-void);
-  color: var(--text-primary);
+  /* bg-background/text-foreground (shadcn base layer below) resolve to the
+     void palette from tailwind.config.js */
+  background-color: #050508; /* tailwind colors.void */
+  color: #e8eaf6;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
