@@ -9,6 +9,7 @@ index behavior is proven in the mongo:7 integration tier.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from pymongo import ReturnDocument
@@ -105,6 +106,18 @@ class FakeCollection:
         if "$inc" in update:
             for key, value in update["$inc"].items():
                 doc[key] = doc.get(key, 0) + value
+        if "$push" in update:
+            for key, value in update["$push"].items():
+                doc.setdefault(key, []).append(value)
+        if "$pull" in update:
+            for key, matcher in update["$pull"].items():
+                entries = doc.get(key)
+                if isinstance(entries, list):
+                    doc[key] = [
+                        entry
+                        for entry in entries
+                        if not self._match(entry, matcher)
+                    ]
 
     def _apply_pipeline(self, doc: dict[str, Any], pipeline: list[dict]) -> None:
         for stage in pipeline:
@@ -162,13 +175,22 @@ class FakeCollection:
     async def update_one(
         self, query: dict[str, Any], update: dict[str, Any]
     ) -> Any:
+        matched = 0
         modified = 0
-        for doc in self.docs.values():
+        for key, doc in self.docs.items():
             if self._match(doc, query):
+                matched += 1
+                # Deep copy: $push/$unset mutate nested lists in place, and a
+                # shallow snapshot would alias them into always-equal.
+                before = copy.deepcopy(doc)
                 self._apply_update(doc, update)
-                modified += 1
+                # Real MongoDB reports modified_count only for documents whose
+                # values actually changed (a $pull that matches nothing is a
+                # no-op); tests lean on that honesty for 404s.
+                if self.docs[key] != before:
+                    modified += 1
         return type(
-            "UpdateResult", (), {"modified_count": modified, "matched_count": modified}
+            "UpdateResult", (), {"modified_count": modified, "matched_count": matched}
         )()
 
     async def update_many(

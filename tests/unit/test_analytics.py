@@ -359,6 +359,129 @@ async def test_generate_ideas_records_event_with_tokens(
     assert docs[0]["tokens_out"] == 420
 
 
+# --- manual metrics routes ------------------------------------------------------
+
+
+async def _save_an_idea(client: Any, auth_headers: dict[str, str]) -> str:
+    """Save one idea through the real route; returns its id."""
+    response = await client.post(
+        "/api/save-idea",
+        json={"topic_title": "Agents eat SaaS", "rating": 8.5,
+              "rating_explanation": "strong hook, live trend"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["id"]
+
+
+async def test_manual_metric_attach_round_trip(client, auth_headers) -> None:
+    idea_id = await _save_an_idea(client, auth_headers)
+    response = await client.post(
+        f"/api/analytics/posts/{idea_id}/metrics",
+        json={"posted_on": "2026-09-16", "impressions": 1200,
+              "reactions": 34, "comments": 5, "reposts": 2},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    entry = response.json()
+    assert entry["impressions"] == 1200
+    assert entry["id"] and entry["recorded_at"]
+
+    listing = await client.get(
+        f"/api/analytics/posts/{idea_id}/metrics", headers=auth_headers
+    )
+    assert listing.status_code == 200
+    assert [e["id"] for e in listing.json()] == [entry["id"]]
+
+
+async def test_manual_metric_rejects_negative_counts(client, auth_headers) -> None:
+    idea_id = await _save_an_idea(client, auth_headers)
+    response = await client.post(
+        f"/api/analytics/posts/{idea_id}/metrics",
+        json={"posted_on": "2026-09-16", "impressions": -5},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422  # pasted numbers cannot be negative
+
+
+async def test_manual_metric_on_foreign_idea_is_404(
+    client, auth_headers
+) -> None:
+    """Tenancy: another user's idea does not exist for metric purposes."""
+    idea_id = await _save_an_idea(client, auth_headers)
+
+    await client.post(
+        "/api/auth/register",
+        json={"email": "other@example.com", "password": "correct-horse-9",
+              "name": "Other"},
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "other@example.com", "password": "correct-horse-9"},
+    )
+    other_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    response = await client.post(
+        f"/api/analytics/posts/{idea_id}/metrics",
+        json={"posted_on": "2026-09-16", "impressions": 100},
+        headers=other_headers,
+    )
+    assert response.status_code == 404  # not 403 — the idea is simply not theirs
+
+
+async def test_manual_metric_delete_round_trip(client, auth_headers) -> None:
+    idea_id = await _save_an_idea(client, auth_headers)
+    entry = (
+        await client.post(
+            f"/api/analytics/posts/{idea_id}/metrics",
+            json={"posted_on": "2026-09-16", "impressions": 100},
+            headers=auth_headers,
+        )
+    ).json()
+
+    deleted = await client.delete(
+        f"/api/analytics/posts/{idea_id}/metrics/{entry['id']}",
+        headers=auth_headers,
+    )
+    assert deleted.status_code == 200
+
+    listing = await client.get(
+        f"/api/analytics/posts/{idea_id}/metrics", headers=auth_headers
+    )
+    assert listing.json() == []
+
+    again = await client.delete(
+        f"/api/analytics/posts/{idea_id}/metrics/{entry['id']}",
+        headers=auth_headers,
+    )
+    assert again.status_code == 404
+
+
+async def test_summary_includes_manual_metrics_section(
+    client, auth_headers
+) -> None:
+    """The summary's manual section aggregates pasted entries — labelled apart
+    from usage events because the two come from different worlds."""
+    today = datetime.now(UTC).date().isoformat()
+    idea_id = await _save_an_idea(client, auth_headers)
+    await client.post(
+        f"/api/analytics/posts/{idea_id}/metrics",
+        json={"posted_on": today, "impressions": 1200, "reactions": 34,
+              "comments": 5, "reposts": 2},
+        headers=auth_headers,
+    )
+
+    response = await client.get("/api/analytics/summary", headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    manual_week = body["manual"]["week"]["current"]
+    assert manual_week["impressions"] == 1200
+    assert manual_week["reactions"] == 34
+    assert manual_week["count"] == 1
+    # Usage events untouched by the paste — separate sources, same payload.
+    assert body["counts"]["total"] == 0
+
+
 # --- summary endpoint ------------------------------------------------------------
 
 
