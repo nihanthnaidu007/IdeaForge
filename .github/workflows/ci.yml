@@ -16,6 +16,15 @@ jobs:
   backend:
     name: Backend (ruff + pytest)
     runs-on: ubuntu-latest
+    # Real-Mongo tier for the index/race integration tests (test_mongo_indexes.py
+    # skips itself when MONGO_TEST_URL is unset, so local runs stay fast).
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      MONGO_TEST_URL: mongodb://localhost:27017
     steps:
       - uses: actions/checkout@v4
 
@@ -23,18 +32,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Full backend requirements land with the app-restructure PR (the current
-      # scaffold tree pins an uninstallable scaffold package); the smoke suite is
-      # stdlib-only, so CI stays fast and honest until then.
-      - name: Install lint + test tools
-        run: pip install ruff==0.16.8 pytest
+      - name: Install backend dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
 
-      # Scoped to tests/ while backend/server.py is still scaffold-owned;
-      # the restructure PR extends this to the backend package.
       - name: Ruff
-        run: ruff check tests/
+        run: ruff check backend/app tests/
 
-      - name: Pytest
+      - name: Pytest (unit + integration)
         run: pytest tests/ -q
 
   frontend:
