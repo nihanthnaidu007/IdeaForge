@@ -11,6 +11,7 @@ const LandingPage = lazy(() => import("./pages/LandingPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SavedIdeas = lazy(() => import("./pages/SavedIdeas"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Analytics = lazy(() => import("./pages/Analytics"));
 
 const RouteFallback = () => (
   <div className="min-h-screen bg-void flex items-center justify-center">
@@ -57,6 +58,11 @@ function App() {
               <Route path="/settings" element={
                 <ProtectedRoute>
                   <Settings />
+                </ProtectedRoute>
+              } />
+              <Route path="/analytics" element={
+                <ProtectedRoute>
+                  <Analytics />
                 </ProtectedRoute>
               } />
               {/* Unknown routes land on the shared 404 page */}
