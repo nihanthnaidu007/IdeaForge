@@ -15,6 +15,8 @@ from starlette.responses import JSONResponse
 
 from app.logging_setup import get_request_id
 from app.services.llm.provider import (
+    GenerationRefusedError,
+    InsufficientEvidenceError,
     MissingKeyError,
     ProviderAuthError,
     ProviderError,
@@ -37,6 +39,8 @@ _TYPED_ERRORS: tuple[type[Exception], ...] = (
     ProviderQuotaError,
     ProviderRateLimitedError,
     ProviderUnavailableError,
+    GenerationRefusedError,
+    InsufficientEvidenceError,
     ProviderError,
     ResearchError,
     WorkflowError,
