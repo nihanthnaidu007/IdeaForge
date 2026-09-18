@@ -25,6 +25,7 @@ from app.services.llm.provider import (
     ProviderUnavailableError,
 )
 from app.services.research import ResearchError
+from app.services.trend_cache import TrendNotFoundError
 from app.services.workflow_errors import (
     InvalidScheduleTime,
     InvalidTransition,
@@ -43,6 +44,7 @@ _TYPED_ERRORS: tuple[type[Exception], ...] = (
     InsufficientEvidenceError,
     ProviderError,
     ResearchError,
+    TrendNotFoundError,
     WorkflowError,
     InvalidTransition,
     InvalidScheduleTime,

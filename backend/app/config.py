@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     anthropic_base_url: str | None = None
     openai_base_url: str | None = None
 
+    # How long a research run's cached trends stay forgeable (per-trend forge
+    # accepts trend_ids and 404s on expired ones). 7 days — trends older than
+    # that are stale material for a first draft anyway.
+    trend_cache_ttl_hours: int = Field(default=168, validation_alias="TREND_CACHE_TTL_HOURS")
+
     # Draft-queue reminder scan cadence (ReminderWorker). Default 60 s is the
     # pre-existing behavior; tests lower it (REMINDER_INTERVAL_SECONDS=1) so
     # reminder firing is deterministic.

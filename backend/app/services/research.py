@@ -135,6 +135,10 @@ class TavilyResearchService:
                 "snippet": (result.get("content") or "")[:_SNIPPET_LENGTH],
                 "url": result.get("url", ""),
                 "source": query,
+                # Tavily's field is published_date; the product shape calls it
+                # published_at (spec's enriched-trend example). Absent on many
+                # sources — freshness stays honestly unknown then.
+                "published_at": result.get("published_date") or None,
             }
             for result in (payload.get("results") or [])
         ]
