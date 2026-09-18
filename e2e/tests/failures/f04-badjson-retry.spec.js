@@ -26,8 +26,9 @@ test("F04: bad JSON once → typed failure with zero cards → retry recovers", 
   await page.goto(`${WEB}/dashboard`);
   await page.reload();
   await page.getByTestId("generate-ideas-btn").click();
-  await page.waitForTimeout(1500);
-  await expect(page.locator('[data-testid^="error-"]').first()).toBeVisible();
+  // No fixed wait — Playwright auto-waiting covers the async generation flow;
+  // the extended budget only absorbs CI runner load.
+  await expect(page.locator('[data-testid^="error-"]').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId(/^idea-card/)).toHaveCount(0);
 
   // Provider recovers → the retry affordance actually recovers.
