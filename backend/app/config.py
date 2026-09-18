@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     # local dogfooding). None uses the real Tavily API.
     tavily_base_url: str | None = None
 
+    # Same override for the LLM SDK clients (self-hosted proxies, E2E mock
+    # boundary). None uses the real public APIs — defaults preserve behavior.
+    anthropic_base_url: str | None = None
+    openai_base_url: str | None = None
+
+    # Draft-queue reminder scan cadence (ReminderWorker). Default 60 s is the
+    # pre-existing behavior; tests lower it (REMINDER_INTERVAL_SECONDS=1) so
+    # reminder firing is deterministic.
+    reminder_interval_seconds: float = Field(
+        default=60.0, validation_alias="REMINDER_INTERVAL_SECONDS"
+    )
+
     openai_model: str = "gpt-5.2"
     anthropic_model: str = "claude-sonnet-4-5"
 

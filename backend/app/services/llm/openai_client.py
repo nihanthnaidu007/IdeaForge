@@ -131,13 +131,14 @@ class OpenAILLM:
         api_key: str,
         model: str,
         timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        base_url: str | None = None,
         sdk: AsyncOpenAI | None = None,
     ) -> None:
         # An injected sdk (tests) replaces the real client entirely.
         self.provider_name = "openai"
         self.model_name = model
         self._sdk = sdk if sdk is not None else AsyncOpenAI(
-            api_key=api_key, timeout=timeout_seconds
+            api_key=api_key, timeout=timeout_seconds, base_url=base_url
         )
         self._model = model
         self.provider = "openai"

@@ -98,5 +98,13 @@ async def get_llm(
         provider = await pick_provider(user_id, None, db, settings)
     api_key = await resolve_user_key(db, vault, user_id, provider, settings)
     if provider == "anthropic":
-        return AnthropicLLM(api_key=api_key, model=settings.anthropic_model)
-    return OpenAILLM(api_key=api_key, model=settings.openai_model)
+        return AnthropicLLM(
+            api_key=api_key,
+            model=settings.anthropic_model,
+            base_url=settings.anthropic_base_url,
+        )
+    return OpenAILLM(
+        api_key=api_key,
+        model=settings.openai_model,
+        base_url=settings.openai_base_url,
+    )

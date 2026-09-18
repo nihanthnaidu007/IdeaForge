@@ -78,7 +78,9 @@ def _build_lifespan(settings: Settings, db: object | None):
         # In-process reminder dispatcher: overdue sweep on boot, then a scan
         # each interval. Reminders only — nothing here ever posts (spec
         # compliance ceiling).
-        worker = ReminderWorker(app.state.db, settings)
+        worker = ReminderWorker(
+            app.state.db, settings, interval_seconds=settings.reminder_interval_seconds
+        )
         app.state.reminders = worker
 
         await ensure_indexes(app.state.db)

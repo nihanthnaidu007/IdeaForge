@@ -46,7 +46,7 @@ echo "--- web shell served by nginx"
 curl -fsS http://localhost:3000/ | grep -q '<div id="root">'
 
 echo "--- register + /me round-trip through the nginx proxy (browser path)"
-EMAIL="smoke-$(date +%s)@ideaforge.test"
+EMAIL="smoke-$(date +%s)@smoke.ideaforge.dev"
 BODY="{\"name\":\"Smoke\",\"email\":\"$EMAIL\",\"password\":\"correct-horse-42\"}"
 curl -fsS -X POST http://localhost:3000/api/auth/register \
   -H 'Content-Type: application/json' -d "$BODY" > /tmp/ideaforge-smoke-register.json
