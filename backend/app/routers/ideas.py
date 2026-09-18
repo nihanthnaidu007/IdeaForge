@@ -2,7 +2,9 @@
 
 Fail-loud: no key → 400 MISSING_KEYS; unparseable model JSON → 502
 GENERATION_FAILED; a trend context that cannot support the idea → 502
-INSUFFICIENT_EVIDENCE (§5.2 — the fix is better research, not a retry).
+INSUFFICIENT_EVIDENCE (§5.2 — the fix is better research, not a retry);
+an unknown/expired per-trend forge id → 404 TRENDS_NOT_FOUND, never a
+silent fallback to unscoped generation.
 The scaffold's fallback chain (Claude fails → GPT → canned ideas with HTTP
 200) is gone — canned ideas in particular were fabricated data presented as
 real strategy.
@@ -31,6 +33,7 @@ from app.services.llm.provider import (
     last_usage_of,
     parse_json_output,
 )
+from app.services.trend_cache import load_trends_for_forge
 from app.services.usage import (
     IDEAS_GENERATED,
     INSIGHT_CARD_GENERATED,
@@ -44,7 +47,19 @@ router = APIRouter()
 def _trends_text(raw_trends: list[TrendItem]) -> str:
     # M4: rows are validated TrendItems, so direct attribute access is safe —
     # raw dict indexing here turned a missing client key into a 500 KeyError.
-    return "\n".join(f"- {trend.title}: {trend.snippet}" for trend in raw_trends[:8])
+    # why_now and the source label ride along when present: per-trend forge
+    # scopes generation to the cached trends' content, which includes the
+    # enrichment the research run produced.
+    lines: list[str] = []
+    for trend in raw_trends[:8]:
+        line = f"- {trend.title}: {trend.snippet}"
+        if trend.why_now:
+            line += f" Why now: {trend.why_now}"
+        if trend.url:
+            label = trend.source or trend.url
+            line += f" [source: {label}]({trend.url})"
+        lines.append(line)
+    return "\n".join(lines)
 
 
 @router.post("/generate-ideas")
@@ -55,6 +70,22 @@ async def generate_ideas(
     vault: Any = Depends(get_vault),
     settings: Any = Depends(get_settings_dep),
 ) -> dict[str, Any]:
+    if data.trend_ids:
+        # Per-trend forge: scope generation to the server-cached trends'
+        # content — no re-search, no extra Tavily spend, same single model
+        # call otherwise. Unknown/expired ids are a typed 404 from the cache
+        # (never a silent fallback to unscoped forging).
+        cached_trends = await load_trends_for_forge(
+            db, user_id=current_user["user_id"], trend_ids=data.trend_ids
+        )
+        trends_text = _trends_text(cached_trends)
+        task = (
+            "Generate 5-6 LinkedIn post ideas based specifically on these "
+            "selected trends."
+        )
+    else:
+        trends_text = _trends_text(data.raw_trends)
+        task = "Generate 5-6 LinkedIn post ideas based on these trends."
     llm = await get_llm(
         current_user["user_id"],
         "anthropic",
@@ -63,10 +94,7 @@ async def generate_ideas(
         settings=settings,
     )
     system = CLAUDE_IDEA_GENERATION_PROMPT.format(niche=data.niche, tone=data.tone)
-    prompt = (
-        f"Here are the current trends:\n{_trends_text(data.raw_trends)}\n\n"
-        "Generate 5-6 LinkedIn post ideas based on these trends."
-    )
+    prompt = f"Here are the current trends:\n{trends_text}\n\n{task}"
     response = await llm.complete(system=system, prompt=prompt, json_mode=True)
     ideas = parse_json_output(response, provider="anthropic")
     usage = last_usage_of(llm)
