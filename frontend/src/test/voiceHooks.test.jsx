@@ -297,7 +297,9 @@ describe("HookPicker", () => {
   it("loads hooks for the format and applies a selection", async () => {
     api.get.mockResolvedValue(hookListResponse);
     const onSelect = vi.fn();
-    render(<HookPicker format="hot-take" onSelect={onSelect} />);
+    const { rerender } = render(
+      <HookPicker format="hot-take" onSelect={onSelect} />,
+    );
 
     await screen.findByTestId("hook-row-H01");
     expect(screen.getByText("Unpopular opinion: {claim}.")).toBeInTheDocument();
@@ -305,9 +307,13 @@ describe("HookPicker", () => {
     expect(api.get).toHaveBeenCalledWith("/hooks?format=hot_take");
 
     await userEvent.click(screen.getByTestId("hook-use-H01"));
-    expect(onSelect).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "H01", style: "contrarian" }),
-    );
+    // The contract is the hook ID (the Dashboard stores it and sends it as
+    // hook_id) — not the hook object.
+    expect(onSelect).toHaveBeenCalledWith("H01");
+
+    // With the ID selected, the row flips to its Remove control.
+    rerender(<HookPicker format="hot-take" selectedHookId="H01" onSelect={onSelect} />);
+    expect(screen.getByTestId("hook-remove-H01")).toBeInTheDocument();
   });
 
   it("source-locks requires_source hooks without sourced claims", async () => {

@@ -346,7 +346,7 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
                     selected={selectedHookId === hook.id}
                     hasOriginal={Boolean(originalPost)}
                     swapping={swappingId === hook.id}
-                    onUse={() => onSelect?.(hook)}
+                    onUse={() => onSelect?.(hook.id)}
                     onRemove={() => onSelect?.(null)}
                     onSwap={() => swap(hook)}
                   />
