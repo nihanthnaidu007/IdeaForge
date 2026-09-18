@@ -189,7 +189,7 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
       const data = await api.post("/swap-hook", {
         // SwapHookRequest contract: original_post, hook_id, idea, format, tone —
         // the rewrite conditions the new opener on the same idea evidence.
-        post: originalPost,
+        original_post: originalPost,
         hook_id: hook.id,
         idea,
         format: apiFormat,

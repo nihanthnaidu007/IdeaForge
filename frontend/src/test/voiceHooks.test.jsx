@@ -370,7 +370,7 @@ describe("HookPicker", () => {
     await userEvent.click(screen.getByTestId("hook-swap-H01"));
     await waitFor(() => {
       expect(api.post).toHaveBeenCalledWith("/swap-hook", {
-        post: "Current draft",
+        original_post: "Current draft",
         hook_id: "H01",
         idea: { topic_title: "Eval debt" },
         format: "hot_take",
