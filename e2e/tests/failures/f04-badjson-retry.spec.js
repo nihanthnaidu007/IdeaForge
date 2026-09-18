@@ -5,9 +5,11 @@ import {
   WEB, API, installDenyList, authedStorage, setScenario, clearStubRequests, routes,
 } from "../../utils/helpers.js";
 
-test.fixme(
+// Quarantined as test.fixme during the 2026-09-18 CI flakes (failure migrated
+// between steps); re-enabled with request-level stub trace logging in place so
+// a red run is self-diagnosing — see #16.
+test(
   "F04: bad JSON once → typed failure with zero cards → retry recovers",
-  "Flaky under CI load — failure migrates between steps (error-visibility, retry-recovery); quarantined pending investigation in #16",
   async ({ page, request }) => {
   installDenyList(page, test.info());
   const email = `f04-${Date.now()}@e2e.ideaforge.dev`;
