@@ -9,6 +9,8 @@ the journeys assert on).
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,35 @@ _seq = 0
 _records: list[dict[str, Any]] = []
 _sequence_idx: dict[int, int] = {}
 
+# Request-level trace (#16): one line per provider call so a red E2E run
+# answers "did the call arrive and what returned" from the CI log alone.
+# Uvicorn only configures its own loggers — without an explicit handler the
+# root logger's WARNING floor would swallow INFO lines.
+_trace = logging.getLogger("e2e.stub.trace")
+if not _trace.handlers:
+    # stderr, not stdout: the E2E harness pipes webServer stderr into the test
+    # output (uvicorn banners, backend JSON logs all surface there) while
+    # stdout — uvicorn's access stream — is swallowed (#16: zero HTTP/1.1
+    # lines in CI). stderr is also line-buffered under pipes.
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _trace.addHandler(_handler)
+_trace.setLevel(logging.INFO)
+_trace.propagate = False
+
+
+def _trace_call(provider: str, rule: dict[str, Any] | None, resp: str, seq: str | None = None) -> None:
+    parts = [
+        "STUB-CALL",
+        f"provider={provider}",
+        f"scenario={_state['scenario']}",
+        f"rule={(rule or {}).get('_idx', '-')}",
+    ]
+    if seq is not None:
+        parts.append(f"seq={seq}")
+    parts.append(f"resp={resp}")
+    _trace.info(" ".join(parts))
+
 
 def _fixture(name: str) -> Any:
     return json.loads((PROVIDERS / f"{name}.json").read_text(encoding="utf-8"))
@@ -42,6 +73,7 @@ async def set_scenario(data: ScenarioIn) -> Any:
         return JSONResponse(status_code=404, content={"detail": f"unknown scenario '{data.scenario}'"})
     _state["scenario"] = data.scenario
     _sequence_idx.clear()
+    _trace.info("STUB-ADMIN scenario=%s sequence_counters=cleared", data.scenario)
     return {"loaded": data.scenario}
 
 
@@ -123,6 +155,8 @@ def _serve(rule: dict[str, Any], provider: str) -> Any:
     if rule.get("close_connection"):
         # Mid-flight network failure (§4 F06): headers sent, body truncated —
         # the SDK raises RemoteProtocolError → ResearchError.
+        _trace_call(provider, rule, "stream:midflight-reset")
+
         async def partial():
             yield b'{"results": [{"title": "partial'
             raise ConnectionResetError("stub simulated mid-flight reset")
@@ -134,12 +168,19 @@ def _serve(rule: dict[str, Any], provider: str) -> Any:
         key = (_state["scenario"], rule.get("_provider"), rule.get("_idx"))
         idx = _sequence_idx.get(key, 0)
         _sequence_idx[key] = idx + 1
-        return _fixture(rule["sequence"][idx % len(rule["sequence"])])
+        # Sequences wrap modulo — exhaustion cannot index out of range (#16).
+        total = len(rule["sequence"])
+        pos = idx % total
+        _trace_call(provider, rule, f"fixture:{rule['sequence'][pos]}", seq=f"{idx}({pos}/{total})")
+        return _fixture(rule["sequence"][pos])
     if "serve_status" in rule:
         content = _fixture(rule["serve_fixture"]) if rule.get("serve_fixture") else {"detail": "stub error"}
+        _trace_call(provider, rule, f"status:{rule['serve_status']}")
         return JSONResponse(status_code=int(rule["serve_status"]), content=content)
     if rule.get("serve_fixture"):
+        _trace_call(provider, rule, f"fixture:{rule['serve_fixture']}")
         return _fixture(rule["serve_fixture"])
+    _trace_call(provider, rule, "noaction:404")
     return JSONResponse(status_code=404, content={"detail": "stub rule has no serve action"})
 
 
@@ -153,6 +194,7 @@ def _handle(provider: str, request: Request, body: dict[str, Any], wrap: bool) -
             if isinstance(served, Response):
                 return served
             return _wrap(_inner_text(served), provider) if wrap else served
+    _trace_call(provider, None, "nomatch:404")
     return JSONResponse(status_code=404, content={"detail": f"no {provider} rule matched"})
 
 
@@ -179,7 +221,9 @@ async def openai_models(request: Request) -> Any:
     is_anthropic = "x-api-key" in request.headers
     provider = "anthropic" if is_anthropic else "openai"
     _record(provider, request, {})
-    for rule in _rules(provider):
+    for idx, rule in enumerate(_rules(provider)):
+        rule["_provider"] = provider
+        rule["_idx"] = idx
         if "serve_status" in rule:
             return _serve(rule, provider)
     if is_anthropic:
