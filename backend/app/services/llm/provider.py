@@ -211,6 +211,34 @@ async def resolve_user_key(
     raise MissingKeyError(_KEY_MISSING_COPY[provider], provider=provider)
 
 
+async def pick_provider(
+    user_id: str, requested: str | None, db: Any, settings: Settings
+) -> str:
+    """Resolve which LLM provider serves this request.
+
+    An explicit request wins. Otherwise auto-detect from presence only (BYOK
+    blob or server env default): no decryption and no key_audit write here,
+    so the probe stays side-effect-free and the real use is audited exactly
+    once, inside resolve_user_key. Raises MissingKeyError when nothing is
+    connected — never a silent hardcoded-provider fallback.
+    """
+    if requested:
+        return requested
+    prefs = await db.user_preferences.find_one(
+        {"user_id": user_id}, {"_id": 0, "keys": 1}
+    )
+    byok = (prefs or {}).get("keys") or {}
+    for candidate in ("openai", "anthropic"):
+        if byok.get(candidate):
+            return candidate
+    for candidate in ("openai", "anthropic"):
+        if getattr(settings, f"{candidate}_api_key", None):
+            return candidate
+    raise MissingKeyError(
+        "No OpenAI or Anthropic API key configured. Please add your key in Settings.",
+    )
+
+
 def strip_code_fences(text: str) -> str:
     clean = text.strip()
     if clean.startswith("```"):

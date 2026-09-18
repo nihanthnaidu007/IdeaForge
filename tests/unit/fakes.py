@@ -73,12 +73,19 @@ class FakeCollection:
         self,
         *,
         unique_fields: tuple[str, ...] = (),
-        id_field: str = "id",
+        id_field: str | tuple[str, ...] = "id",
     ) -> None:
         self.docs: dict[str, dict[str, Any]] = {}
         self._next = 0
         self._unique_fields = unique_fields
         self._id_field = id_field
+
+    def _doc_key(self, doc: dict[str, Any]) -> str:
+        # Composite id_field (e.g. hooks' (id, format) catalog rows) keeps
+        # same-id/different-format documents from overwriting each other.
+        if isinstance(self._id_field, tuple):
+            return str(tuple(doc.get(f) for f in self._id_field))
+        return str(doc.get(self._id_field, self._next))
 
     def _match(self, doc: dict[str, Any], query: dict[str, Any]) -> bool:
         for key, cond in query.items():
@@ -165,7 +172,7 @@ class FakeCollection:
                 existing.get(f) == doc.get(f) for f in self._unique_fields
             ):
                 raise DuplicateKeyError(f"unique index on {list(self._unique_fields)}")
-        key = str(doc.get(self._id_field, self._next))
+        key = self._doc_key(doc)
         self._next += 1
         self.docs[key] = dict(doc)
         return type("InsertResult", (), {"inserted_id": key})()
@@ -246,7 +253,7 @@ class FakeCollection:
         if upsert and not isinstance(update, list):
             new_doc: dict[str, Any] = {}
             self._apply_update(new_doc, update)
-            insert_key = str(new_doc.get(self._id_field, self._next))
+            insert_key = self._doc_key(new_doc)
             self._next += 1
             self.docs[insert_key] = new_doc
             return self._project(new_doc, projection)
@@ -271,6 +278,10 @@ class FakeDatabase:
         self.variant_sets = FakeCollection(unique_fields=("id",))
         self.usage_events = FakeCollection()
         self.voice_profiles = FakeCollection(unique_fields=("user_id",))
+        # Hook Bank catalog rows: one doc per pattern×format — composite key.
+        self.hooks = FakeCollection(
+            unique_fields=("id", "format"), id_field=("id", "format")
+        )
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 
@@ -288,3 +299,43 @@ class FakeDatabase:
     async def create_indexes_all(self, specs: dict[str, list[Any]]) -> None:
         for name, indexes in specs.items():
             await self[name].create_indexes(indexes)
+
+
+class RecordingLLM:
+    """Stub LLMProvider: records every complete() call, replays responses."""
+
+    model_name = "openai"
+
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def complete(
+        self,
+        *,
+        system: str,
+        prompt: str,
+        json_mode: bool = False,
+        max_tokens: int = 2_000,
+    ) -> str:
+        self.calls.append(
+            {"system": system, "prompt": prompt, "json_mode": json_mode}
+        )
+        return self._responses.pop(0)
+
+
+def stub_get_llm(responses: list[str], *, capture: list[RecordingLLM] | None = None):
+    """Replacement for app.deps.get_llm at the import seam (monkeypatched)."""
+
+    async def _get_llm(
+        user_id: str, provider: str, *, db: Any, vault: Any, settings: Any
+    ) -> RecordingLLM:
+        llm = RecordingLLM(responses)
+        # Usage-event attribution reads provider_name off the instance the
+        # same way it does off the real clients.
+        llm.provider_name = provider
+        if capture is not None:
+            capture.append(llm)
+        return llm
+
+    return _get_llm

@@ -134,6 +134,8 @@ class OpenAILLM:
         sdk: AsyncOpenAI | None = None,
     ) -> None:
         # An injected sdk (tests) replaces the real client entirely.
+        self.provider_name = "openai"
+        self.model_name = model
         self._sdk = sdk if sdk is not None else AsyncOpenAI(
             api_key=api_key, timeout=timeout_seconds
         )

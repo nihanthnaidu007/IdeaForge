@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import Navbar from "@/components/layout/Navbar";
 import SkipLink from "@/components/layout/SkipLink";
 import { ErrorState } from "@/components/states/AsyncStates";
+import VoiceDNAEditor from "@/components/settings/VoiceDNAEditor";
 import { api } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -152,11 +153,6 @@ const Settings = () => {
   };
 
   const clearApiKey = async (keyType) => {
-    const fieldMap = {
-      tavily: "tavily_api_key",
-      anthropic: "anthropic_api_key",
-      openai: "openai_api_key",
-    };
     const statusMap = {
       tavily: "has_tavily_key",
       anthropic: "has_anthropic_key",
@@ -165,7 +161,9 @@ const Settings = () => {
 
     setSavingKey(keyType);
     try {
-      await api.put("/preferences", { [fieldMap[keyType]]: "" });
+      // Removal is the dedicated route — PUT /preferences skips empty
+      // strings by design, so an "empty means delete" convention would lie.
+      await api.delete(`/keys/${keyType}`);
 
       setKeyStatus((prev) => ({
         ...prev,
@@ -524,6 +522,10 @@ const Settings = () => {
                   </Button>
                 </div>
               </div>
+
+              {/* Voice DNA (spec §Voice DNA row): extraction from past posts,
+                  confidence-labeled profile, do/don't editing, versions. */}
+              <VoiceDNAEditor />
             </>
           )}
         </div>

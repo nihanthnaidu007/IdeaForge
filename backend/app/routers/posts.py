@@ -27,16 +27,20 @@ from app.deps import get_current_user, get_db, get_llm, get_settings_dep, get_va
 from app.models.posts import (
     GeneratePostRequest,
     GenerateVariantsRequest,
+    SwapHookRequest,
     TweakPostRequest,
     TweakVariantRequest,
 )
 from app.models.research import TrendItem
+from app.routers.voice import get_active_voice_profile
 from app.services.cost_hints import build_cost_hint
+from app.services.hooks import build_hook_block
 from app.services.llm.provider import (
     GenerationError,
     GenerationRefusedError,
     complete_json_with_retry,
     last_usage_of,
+    pick_provider,
 )
 from app.services.usage import (
     POST_DRAFTED,
@@ -56,11 +60,11 @@ from app.services.variants import (
     brief_intent,
     build_idea_block,
     build_trend_block,
-    build_voice_block,
     estimate_output_tokens,
     normalize_format,
     parse_variant_output,
 )
+from app.services.voice import build_voice_block, voice_fallback_block
 
 logger = logging.getLogger("app.posts")
 
@@ -69,6 +73,36 @@ router = APIRouter()
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+async def _voice_block(db: Any, user_id: str) -> str:
+    """The VOICE DNA block for this user's prompts (retrieval-into-prompt).
+
+    Versioned profiles: the active version wins. When the user has none, a
+    neutral fallback block keeps output honest about its register instead of
+    inventing a persona.
+    """
+    profile = await get_active_voice_profile(db, user_id)
+    if profile is None:
+        return voice_fallback_block()
+    return build_voice_block(profile)
+
+
+async def _hook_section(db: Any, user_id: str, hook_id: str | None) -> str:
+    """The HOOK block when the user picked a pattern in the Hook Picker.
+
+    Builtin rows are shared catalog patterns; user hooks load only when owned
+    by the requester. An unknown id is a 404, not a silently dropped block —
+    the user explicitly asked for this pattern.
+    """
+    if not hook_id:
+        return ""
+    hook = await db.hooks.find_one({"id": hook_id})
+    if hook is None or (
+        not hook.get("is_builtin") and hook.get("user_id") != user_id
+    ):
+        raise HTTPException(status_code=404, detail="Hook not found.")
+    return build_hook_block(hook)
 
 
 def _insight_evidence_gaps(insights: dict[str, Any] | None) -> list[str]:
@@ -92,7 +126,10 @@ def _stored_trends(set_doc: dict[str, Any]) -> list[TrendItem]:
 
 
 async def _voice_block(db: Any, user_id: str) -> str:
-    profile = await db.voice_profiles.find_one({"user_id": user_id}, {"_id": 0})
+    """The active profile's descriptors, or the honest no-profile note."""
+    profile = await get_active_voice_profile(db, user_id)
+    if profile is None:
+        return voice_fallback_block()
     return build_voice_block(profile)
 
 
@@ -168,7 +205,7 @@ async def _run_variant_generation(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    llm = await get_llm(user_id, "openai", db=db, vault=vault, settings=settings)
+    llm = await get_llm(user_id, "auto", db=db, vault=vault, settings=settings)
     voice_block = await _voice_block(db, user_id)
     idea_block = build_idea_block(
         data.idea, data.insights, custom_instructions=data.custom_instructions
@@ -176,6 +213,7 @@ async def _run_variant_generation(
     trend_block = build_trend_block(
         data.trends, evidence_gaps=_insight_evidence_gaps(data.insights)
     )
+    hook_section = await _hook_section(db, user_id, data.hook_id)
     format_contract = FORMAT_CONTRACTS[format_code]
     briefs = assign_briefs(format_code, 3, generation_round)
 
@@ -192,16 +230,17 @@ async def _run_variant_generation(
             variant_block=brief_block(brief),
             trend_block=trend_block,
             voice_block=voice_block,
+            hook_block=hook_section,
         )
         try:
             parsed = await complete_json_with_retry(
                 llm,
                 system=MASTER_SYSTEM_PROMPT,
                 prompt=user_message,
-                provider="openai",
+                provider=llm.provider_name,
                 max_tokens=4000,
             )
-            draft = parse_variant_output(parsed, provider="openai")
+            draft = parse_variant_output(parsed, provider=llm.provider_name)
         except GenerationRefusedError as exc:
             # §4.4: a refusal is truthful input feedback — never retried
             # silently, never substituted. Its column shows the typed state.
@@ -221,7 +260,7 @@ async def _run_variant_generation(
             db,
             user_id,
             VARIANT_GENERATED,
-            provider="openai",
+            provider=llm.provider_name,
             tokens_in=usage.tokens_in if usage else None,
             tokens_out=usage.tokens_out if usage else None,
             variant_id=variant_id,
@@ -256,8 +295,8 @@ async def _run_variant_generation(
     cost_hint = build_cost_hint(
         "generate_variant",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=last_prompt_chars or 6000,
         output_tokens=estimate_output_tokens(format_code),
         k=len([v for v in variants if v["status"] == "ready"]),
@@ -320,6 +359,7 @@ async def cost_estimate(
     action: str,
     format: str | None = None,
     current_user: dict[str, str] = Depends(get_current_user),
+    db: Any = Depends(get_db),
     settings: Any = Depends(get_settings_dep),
 ) -> dict[str, Any]:
     """Cost-hint preview for the banner that precedes an action (AI pack §6).
@@ -328,8 +368,12 @@ async def cost_estimate(
     before assembly; the estimate says "about" for a reason). Unpriced models
     return estimated_usd: null — the UI gates with Run anyway, per §6.5.
     """
-    provider = "openai"
-    model = settings.openai_model
+    provider = await pick_provider(current_user["user_id"], None, db, settings)
+    model = (
+        settings.anthropic_model
+        if provider == "anthropic"
+        else settings.openai_model
+    )
     format_code = ""
     output_tokens: int | None = None
     if format:
@@ -392,7 +436,7 @@ async def tweak_variant(
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
     )
     voice_block = await _voice_block(db, current_user["user_id"])
     briefs = {b.brief_id: b for b in VARIATION_BRIEFS[format_code]}
@@ -420,16 +464,16 @@ async def tweak_variant(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
         db,
         current_user["user_id"],
         VARIANT_TWEAKED,
-        provider="openai",
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
         variant_id=f"{set_doc['id']}:{index}",
@@ -465,8 +509,8 @@ async def tweak_variant(
     cost_hint = build_cost_hint(
         "generate_variant",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
         k=index + 1,
@@ -493,9 +537,10 @@ async def generate_post(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
     )
     voice_block = await _voice_block(db, current_user["user_id"])
+    hook_block = await _hook_section(db, current_user["user_id"], data.hook_id)
     user_message = assemble_user_message(
         idea_block=build_idea_block(
             data.idea, data.insights, custom_instructions=data.custom_instructions
@@ -506,29 +551,30 @@ async def generate_post(
             [], evidence_gaps=_insight_evidence_gaps(data.insights)
         ),
         voice_block=voice_block,
+        hook_block=hook_block,
     )
     parsed = await complete_json_with_retry(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
         db,
         current_user["user_id"],
         POST_DRAFTED,
-        provider="openai",
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
     )
     cost_hint = build_cost_hint(
         "generate_post",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
     )
@@ -548,7 +594,11 @@ async def tweak_post(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"],
+        "auto",
+        db=db,
+        vault=vault,
+        settings=settings,
     )
     voice_block = await _voice_block(db, current_user["user_id"])
     user_message = assemble_user_message(
@@ -568,25 +618,61 @@ async def tweak_post(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
-        db,
-        current_user["user_id"],
-        POST_TWEAKED,
-        provider="openai",
+        db, current_user["user_id"], POST_TWEAKED,
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
     )
     cost_hint = build_cost_hint(
         "generate_post",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
     )
     return {"post": draft["post_text"], "cost_hint": cost_hint}
+
+
+@router.post("/swap-hook")
+async def swap_hook(
+    data: SwapHookRequest,
+    current_user: dict[str, str] = Depends(get_current_user),
+    db: Any = Depends(get_db),
+    vault: Any = Depends(get_vault),
+    settings: Any = Depends(get_settings_dep),
+) -> dict[str, str]:
+    """Hook-swap on an existing draft: the picked pattern rewrites ONLY the
+    opening line; the rest of the post stays byte-for-byte the user's draft
+    (craft pack §4.3). One LLM call, user's BYOK credits."""
+    llm = await get_llm(
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
+    )
+    hook_section = await _hook_section(db, current_user["user_id"], data.hook_id)
+    voice_block = await _voice_block(db, current_user["user_id"])
+    prompt = (
+        f"Here is the current LinkedIn post:\n\n{data.original_post}\n\n"
+        "Rewrite it so the OPENING LINE follows the hook pattern below. "
+        "Keep every other line, the structure, and the core message about "
+        f"\"{data.idea.get('title', '')}\" unchanged.\n\n"
+        f"Tone: {data.tone}\n"
+        f"Format: {data.format}\n"
+        f"{hook_section}\n"
+        f"{voice_block}\n\n"
+        "Write the updated post now."
+    )
+    parsed = await complete_json_with_retry(
+        llm,
+        system=MASTER_SYSTEM_PROMPT,
+        prompt=prompt,
+        provider=llm.provider_name,
+        max_tokens=2000,
+    )
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
+    return {"post": draft["post_text"], "hook_pattern_id": data.hook_id}

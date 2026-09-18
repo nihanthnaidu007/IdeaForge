@@ -8,6 +8,7 @@ from app.routers import (
     board,
     export,
     health,
+    hooks,
     ideas,
     posts,
     preferences,
@@ -15,6 +16,7 @@ from app.routers import (
     queue,
     research,
     saved,
+    voice,
 )
 
 api_router = APIRouter(prefix="/api")
@@ -30,3 +32,5 @@ api_router.include_router(board.router)
 api_router.include_router(queue.router)
 api_router.include_router(export.router)
 api_router.include_router(preview.router)
+api_router.include_router(voice.router)
+api_router.include_router(hooks.router)
