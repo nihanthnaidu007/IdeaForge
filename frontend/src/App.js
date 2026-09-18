@@ -10,6 +10,7 @@ import NotFound from "@/pages/NotFound";
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const SavedIdeas = lazy(() => import("./pages/SavedIdeas"));
+const BoardPage = lazy(() => import("./pages/BoardPage"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Analytics = lazy(() => import("./pages/Analytics"));
 
@@ -53,6 +54,11 @@ function App() {
               <Route path="/saved" element={
                 <ProtectedRoute>
                   <SavedIdeas />
+                </ProtectedRoute>
+              } />
+              <Route path="/board" element={
+                <ProtectedRoute>
+                  <BoardPage />
                 </ProtectedRoute>
               } />
               <Route path="/settings" element={

@@ -37,6 +37,12 @@ async def save_idea(
         "tone": data.tone,
         "created_at": datetime.now(UTC).isoformat(),
         "is_bookmarked": data.is_bookmarked,
+        # Board pipeline defaults (spec Content Board row): fresh ideas land in
+        # Inbox with no tags and nothing scheduled.
+        "status": "inbox",
+        "tags": [],
+        "scheduled_for": None,
+        "reminder_fired_at": None,
     }
     await db.saved_ideas.insert_one(idea_doc)
     return SavedIdea(**idea_doc)

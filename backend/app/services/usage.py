@@ -40,6 +40,10 @@ POST_TWEAKED = "post_tweaked"
 VOICE_EXTRACTED = "voice_extracted"
 POSTS_EXPORTED = "posts_exported"
 METRICS_LOGGED = "metrics_logged"
+IDEA_STATUS_CHANGED = "idea_status_changed"
+DRAFT_SCHEDULED = "draft_scheduled"
+REMINDER_SNOOZED = "reminder_snoozed"
+REMINDER_FIRED = "reminder_fired"
 
 # Upper bound on optional context fields — analytic metadata, not user copy.
 _MAX_CONTEXT_LEN = 200

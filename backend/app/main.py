@@ -66,7 +66,6 @@ def _build_lifespan(settings: Settings, db: object | None):
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
-        worker = ReminderWorker()
         if db is not None:
             app.state.db = db
         else:
@@ -75,6 +74,10 @@ def _build_lifespan(settings: Settings, db: object | None):
         app.state.settings = settings
         app.state.vault = build_vault(settings.encryption_master_key)
         app.state.http_client = httpx.AsyncClient(timeout=30.0)
+        # In-process reminder dispatcher: overdue sweep on boot, then a scan
+        # each interval. Reminders only — nothing here ever posts (spec
+        # compliance ceiling).
+        worker = ReminderWorker(app.state.db, settings)
         app.state.reminders = worker
 
         await ensure_indexes(app.state.db)

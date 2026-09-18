@@ -5,10 +5,14 @@ from fastapi import APIRouter
 from app.routers import (
     analytics,
     auth,
+    board,
+    export,
     health,
     ideas,
     posts,
     preferences,
+    preview,
+    queue,
     research,
     saved,
 )
@@ -22,3 +26,7 @@ api_router.include_router(posts.router)
 api_router.include_router(saved.router)
 api_router.include_router(preferences.router)
 api_router.include_router(analytics.router)
+api_router.include_router(board.router)
+api_router.include_router(queue.router)
+api_router.include_router(export.router)
+api_router.include_router(preview.router)

@@ -59,6 +59,9 @@ class Settings(BaseSettings):
 
     redis_url: str | None = None  # set: rate limits share state across workers
     smtp_url: str | None = None  # set: email reminders enabled
+    # LinkedIn feed char limit for the post-preview linter. Configurable
+    # because feed policy drifts (UI pack §6.1 check 3, §9.2 #1).
+    linkedin_char_limit: int = Field(default=3000, validation_alias="LINKEDIN_CHAR_LIMIT")
     log_level: str = "INFO"
 
     model_config = SettingsConfigDict(env_file=_ENV_FILE, extra="ignore")
