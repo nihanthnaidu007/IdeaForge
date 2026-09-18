@@ -35,7 +35,9 @@ test("J09: empty state → validated manual entry → summary + honest compariso
 
   // Pick the idea first — the submit is disabled without one.
   await page.getByTestId("metrics-idea-select").click();
-  await page.getByRole("option").first().click();
+  await page.getByRole("option", { name: /RAG evals/i }).first().click();
+  // The radix trigger reflects the pick — fail fast if the value never bound.
+  await expect(page.getByTestId("metrics-idea-select")).toContainText(/RAG evals/i);
 
   // Manual entry: numbers only — the four count fields in DOM order.
   const numbers = page.getByTestId("metrics-form").locator('input[inputmode="numeric"]');

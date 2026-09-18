@@ -16,6 +16,7 @@ class SaveIdeaRequest(BaseModel):
     post_format: str | None = Field(default=None, max_length=100)
     niche: str = Field(default="AI", min_length=1, max_length=120)
     tone: str = Field(default="professional", min_length=1, max_length=120)
+    tags: list[str] | None = None
     is_bookmarked: bool = False
 
 

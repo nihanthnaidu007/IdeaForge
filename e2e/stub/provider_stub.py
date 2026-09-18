@@ -173,11 +173,26 @@ async def openai_chat(request: Request) -> Any:
 
 @app.get("/v1/models")
 async def openai_models(request: Request) -> Any:
-    _record("openai", request, {})
-    for rule in _rules("openai"):
-        if "serve_status" in rule or rule.get("serve_fixture"):
-            served = _serve(rule, "openai")
-            if isinstance(served, Response):
-                return served
-            return served
+    # Both SDKs probe key validity via GET /v1/models; the caller is
+    # distinguished by auth header — Anthropic sends x-api-key, OpenAI a
+    # Bearer token — and served the matching model-list shape.
+    is_anthropic = "x-api-key" in request.headers
+    provider = "anthropic" if is_anthropic else "openai"
+    _record(provider, request, {})
+    for rule in _rules(provider):
+        if "serve_status" in rule:
+            return _serve(rule, provider)
+    if is_anthropic:
+        return {
+            "data": [
+                {
+                    "id": "claude-sonnet-4-5",
+                    "type": "model",
+                    "display_name": "Claude Sonnet 4.5",
+                }
+            ],
+            "first_id": "claude-sonnet-4-5",
+            "has_more": False,
+            "last_id": "claude-sonnet-4-5",
+        }
     return {"object": "list", "data": [{"id": "gpt-5.2", "object": "model"}]}

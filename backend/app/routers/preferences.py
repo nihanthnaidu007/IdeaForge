@@ -61,11 +61,13 @@ async def _audit(db: Any, user_id: str, provider: str, event: str) -> None:
     await db.key_audit.insert_one(build_key_audit_event(user_id, provider, event))
 
 
-async def _probe_key(provider: str, api_key: str) -> None:
+async def _probe_key(provider: str, api_key: str, settings: Any) -> None:
     """One cheap authenticated call per provider; raises typed errors on failure."""
     if provider == "anthropic":
         async with AsyncAnthropic(
-            api_key=api_key, timeout=_KEY_TEST_TIMEOUT_SECONDS
+            api_key=api_key,
+            timeout=_KEY_TEST_TIMEOUT_SECONDS,
+            base_url=settings.anthropic_base_url,
         ) as sdk:
             try:
                 await sdk.models.list(limit=1)
@@ -73,7 +75,9 @@ async def _probe_key(provider: str, api_key: str) -> None:
                 raise map_anthropic_error(exc, provider) from exc
     elif provider == "openai":
         async with AsyncOpenAI(
-            api_key=api_key, timeout=_KEY_TEST_TIMEOUT_SECONDS
+            api_key=api_key,
+            timeout=_KEY_TEST_TIMEOUT_SECONDS,
+            base_url=settings.openai_base_url,
         ) as sdk:
             try:
                 await sdk.models.list(limit=1)
@@ -83,7 +87,7 @@ async def _probe_key(provider: str, api_key: str) -> None:
         try:
             async with httpx.AsyncClient(timeout=_KEY_TEST_TIMEOUT_SECONDS) as client:
                 response = await client.post(
-                    _TAVILY_PROBE_URL,
+                    settings.tavily_base_url or _TAVILY_PROBE_URL,
                     json={
                         "query": "connectivity check",
                         "max_results": 1,
@@ -234,7 +238,7 @@ async def test_key(
             provider=provider,
         ) from exc
 
-    await _probe_key(provider, api_key)
+    await _probe_key(provider, api_key, settings)
     # M5: use-success is an audit event too — the ledger records that this
     # stored key validated successfully, not only that it failed.
     await _audit(db, user_id, provider, "used")

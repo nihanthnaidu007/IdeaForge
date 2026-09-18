@@ -12,6 +12,7 @@ from pymongo import ReturnDocument
 
 from app.deps import get_current_user, get_db
 from app.models.saved import SavedIdea, SaveIdeaRequest
+from app.routers.board import normalize_tags
 
 router = APIRouter()
 
@@ -38,9 +39,9 @@ async def save_idea(
         "created_at": datetime.now(UTC).isoformat(),
         "is_bookmarked": data.is_bookmarked,
         # Board pipeline defaults (spec Content Board row): fresh ideas land in
-        # Inbox with no tags and nothing scheduled.
+        # Inbox with nothing scheduled; save-time tags seed the tag filter.
         "status": "inbox",
-        "tags": [],
+        "tags": normalize_tags(data.tags or []),
         "scheduled_for": None,
         "reminder_fired_at": None,
     }
