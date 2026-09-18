@@ -28,12 +28,12 @@ test("J02: save Anthropic key → probe uses the user's key → hint stays maske
   // saveApiKey updates status and clears the input but doesn't refetch
   // key_hints — reload so the masked hint comes back from the server.
   await page.reload();
-  await expect(page.getByTestId("anthropic-key-input")).toBeVisible();
+  // Once a key is on file the connected view replaces the input with the
+  // masked hint + one-click test — the input is gone by design.
   await expect(page.getByTestId("anthropic-key-hint")).toBeVisible();
   const hint = await page.getByTestId("anthropic-key-hint").innerText();
   expect(hint).toContain("4321");            // last-4 only
   expect(hint).not.toContain("e2e-anthropic"); // never key material
-  await expect(page.getByTestId("anthropic-key-input")).toHaveValue("");
 
   // One-click probe: the stub record must show the USER'S key, not a server default.
   await page.getByTestId("test-anthropic-btn").click();

@@ -24,13 +24,18 @@ test("J09: empty state → validated manual entry → summary + honest compariso
   await page.goto(`${WEB}/dashboard`);
   await page.getByTestId("generate-ideas-btn").click();
   await expect(page.getByTestId("idea-card-0")).toBeVisible({ timeout: 20_000 });
+  // The analytics idea picker lists SAVED ideas — save one first.
+  await page.getByTestId("idea-card-0").click();
+  await page.getByTestId("save-idea-0-btn").click();
+  await page.waitForTimeout(600);
 
   await page.goto(`${WEB}/analytics`);
   await page.reload();
   await expect(page.getByTestId("metrics-form")).toBeVisible({ timeout: 15_000 });
 
   // Pick the idea first — the submit is disabled without one.
-  await page.getByTestId("metrics-idea-select").selectOption({ index: 1 });
+  await page.getByTestId("metrics-idea-select").click();
+  await page.getByRole("option").first().click();
 
   // Manual entry: numbers only — the four count fields in DOM order.
   const numbers = page.getByTestId("metrics-form").locator('input[inputmode="numeric"]');

@@ -47,9 +47,13 @@ def _body_code(exc: APIStatusError) -> str | None:
     body = exc.body
     if not isinstance(body, dict):
         return None
+    # The SDK flattens OpenAI's {"error": {...}} envelope into the body
+    # itself — accept both the wrapped and flattened shapes.
     error = body.get("error")
     if isinstance(error, dict) and error.get("code"):
         return str(error["code"])
+    if body.get("code"):
+        return str(body["code"])
     return None
 
 

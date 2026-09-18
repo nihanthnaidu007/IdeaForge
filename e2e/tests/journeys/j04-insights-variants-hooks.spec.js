@@ -20,7 +20,8 @@ test("J04: insights → variants → hook swap with cost hints", async ({ page, 
   await page.getByTestId("generate-ideas-btn").click();
   await expect(page.getByTestId("idea-card-0")).toBeVisible({ timeout: 20_000 });
 
-  // Insights: fixture content renders in the card's insight panel.
+  // Insights: expand the collapsed card, then generate.
+  await page.getByTestId("idea-card-0").click();
   await page.getByTestId("generate-insights-0-btn").click();
   await expect(page.getByTestId("insights-0")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("insights-0")).toContainText("golden set");

@@ -61,10 +61,17 @@ test("J07: board MD + CSV and queue ICS downloads", async ({ page, request }) =>
   const items = Array.isArray(boardData) ? boardData : boardData.items ?? [];
   const ideaId = items[0]?.idea_id ?? items[0]?.id ?? items[0]?._id;
   expect(ideaId).toBeTruthy();
+  // The queue schedules drafts — advance the saved idea inbox → forged first.
+  const transRes = await request.post(`${API}/board/${ideaId}/transition`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { to: "forged" },
+  });
+  expect(transRes.ok()).toBeTruthy();
   const schedRes = await request.post(`${API}/queue/${ideaId}/schedule`, {
     headers: { Authorization: `Bearer ${token}` }, data: { scheduled_for: due },
   });
-  expect(schedRes.ok()).toBeTruthy();
+  if (!schedRes.ok()) {
+    throw new Error(`schedule failed ${schedRes.status()}: ${await schedRes.text()}`);
+  }
 
   await page.reload();
   await expect(page.getByTestId("queue-row").first()).toBeVisible();

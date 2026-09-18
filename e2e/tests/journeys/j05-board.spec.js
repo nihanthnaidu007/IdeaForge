@@ -40,13 +40,16 @@ test("J05: inbox → search → transition → persist → tag filter", async ({
 
   // Adjacent-step transition inbox → forged. The server assigns idea ids,
   // so match the move button by prefix/suffix, not by my fixture id.
-  await page.locator('[data-testid^="board-move-"][data-testid$="-forged"]').first().click();
-  await page.waitForTimeout(600);
+  const moveBtn = page.locator('[data-testid^="board-move-"][data-testid$="-forged"]').first();
+  const moveTestId = await moveBtn.getAttribute("data-testid");
+  await moveBtn.click();
+  // The board refetches after the transition — the moved card's button set
+  // no longer offers "forged".
+  await expect(page.locator(`[data-testid="${moveTestId}"]`)).toHaveCount(0, { timeout: 10_000 });
   await page.reload();
   await expect(page.getByTestId("board-card")).toBeVisible();
-  // The card's move set re-renders — "-forged" disappears (you can't move
-  // to the status you're already in).
-  await expect(page.locator('[data-testid$="-forged"]')).toHaveCount(0);
+  // The transition persisted across reload.
+  await expect(page.locator(`[data-testid="${moveTestId}"]`)).toHaveCount(0);
 
   // Tag filter narrows and restores.
   await page.getByTestId("board-tag-filter").click();

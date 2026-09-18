@@ -3,7 +3,8 @@
     "opening_pattern": "Opens on a number or a contrary one-liner; never opens with context or a greeting.",
     "body_pattern": "Short declarative paragraphs, one concrete example per point.",
     "closing_pattern": "Closes with an instruction the reader can do today.",
-    "paragraph_style": "One to two sentences per line, blank line between beats."
+    "paragraph_style": "One to two sentences per line, blank line between beats.",
+    "line_break_habit": "beat_based"
   },
   "vocabulary": {
     "register": "Plain practitioner language \u2014 eval, budget, POC, golden set; no hype adjectives.",
@@ -12,16 +13,19 @@
       "That's backwards",
       "Ask me about"
     ],
-    "verb_energy": "Active verbs, present tense, second person."
+    "verb_energy": "Active verbs, present tense, second person.",
+    "jargon_level": "light"
   },
   "energy": {
     "overall_level": 7,
     "punctuation_style": "Periods over exclamation; em-dash for the turn.",
-    "emphasis_tactics": "Concrete numbers instead of intensifiers."
+    "emphasis_tactics": "Concrete numbers instead of intensifiers.",
+    "emoji_use": "none"
   },
   "sentence_rhythm": {
     "avg_sentence_length_words": 11.5,
-    "variation": "Short declaratives with an occasional long sentence for the turn."
+    "variation": "Short declaratives with an occasional long sentence for the turn.",
+    "fragment_use": "occasional"
   },
   "signature_moves": [
     {

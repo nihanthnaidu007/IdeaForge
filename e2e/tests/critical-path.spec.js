@@ -31,7 +31,8 @@ test("critical path: register → keys → research → forge → variants → s
   await expect(page.getByTestId("idea-card-4")).toBeAttached({ timeout: 10_000 });
   await expect(page.getByTestId("idea-card-0")).toContainText("RAG evals are the new unit tests");
 
-  // Insights on the first card.
+  // Insights on the first card (the card starts collapsed — expand it).
+  await page.getByTestId("idea-card-0").click();
   await page.getByTestId("generate-insights-0-btn").click();
   await expect(page.getByTestId("insights-0")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("insights-0")).toContainText("golden set");
