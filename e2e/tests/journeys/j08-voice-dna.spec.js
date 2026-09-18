@@ -27,7 +27,9 @@ test("J08: extract voice → confidence + do/don't render → versioned re-extra
   await page.reload();
   await expect(page.getByTestId("voice-dna-editor")).toBeVisible();
 
-  await page.getByTestId("voice-samples-input").fill(SAMPLES.join("\n\n---\n\n"));
+  // The paste box splits on BLANK LINES (its only parsing rule) — join with
+  // blank lines so the editor sees exactly 3 samples (3–5 enforced).
+  await page.getByTestId("voice-samples-input").fill(SAMPLES.join("\n\n"));
   await expect(page.getByTestId("voice-cost-hint")).toBeVisible();
   await page.getByTestId("voice-extract-btn").click();
 
@@ -50,7 +52,7 @@ test("J08: extract voice → confidence + do/don't render → versioned re-extra
   }
   const reSamples = page.getByTestId("voice-reextract-samples-input");
   if (await reSamples.isVisible().catch(() => false) && !(await reSamples.inputValue())) {
-    await reSamples.fill(SAMPLES.join("\n\n---\n\n"));
+    await reSamples.fill(SAMPLES.join("\n\n"));
   }
   const runBtn = page.getByTestId("voice-reextract-run-btn");
   if (await runBtn.isVisible().catch(() => false)) {

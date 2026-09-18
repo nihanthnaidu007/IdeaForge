@@ -47,8 +47,16 @@ test("J06: schedule → queue row → reminder card within the interval", async 
   await expect(page.getByTestId("queue-row").first()).toBeVisible();
   await expect(page.getByTestId("queue-scheduled-count")).toBeVisible();
 
-  // The reminder: due passes, worker ticks within REMINDER_INTERVAL_SECONDS=1.
-  await expect(page.getByTestId("queue-reminder-card").first()).toBeVisible({ timeout: 110_000 });
+  // The reminder: due passes, the worker (REMINDER_INTERVAL_SECONDS=1 in E2E)
+  // delivers it, and the queue — which loads on mount/refreshKey, not on a
+  // timer — shows it after the next reload. Poll with reloads until due+tick.
+  let delivered = false;
+  for (let i = 0; i < 10 && !delivered; i++) {
+    await page.waitForTimeout(10_000);
+    await page.reload();
+    delivered = await page.getByTestId("queue-reminder-card").first().isVisible().catch(() => false);
+  }
+  await expect(page.getByTestId("queue-reminder-card").first()).toBeVisible();
   await expect(page.getByTestId("queue-notifications")).toBeVisible();
 
   // Hard boundary: the reminder pipeline never touches LinkedIn.

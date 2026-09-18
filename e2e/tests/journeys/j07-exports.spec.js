@@ -52,8 +52,8 @@ test("J07: board MD + CSV and queue ICS downloads", async ({ page, request }) =>
 
   // ICS export from the queue section (one scheduled row via the API).
   const due = new Date(Date.now() + 3_600_000).toISOString();
-  const schedRes = await request.post(`${API}${routes.queue.schedule}`, {
-    headers: { Authorization: `Bearer ${token}` }, data: { idea_id: "e2e-idea-1", scheduled_for: due },
+  const schedRes = await request.post(`${API}/queue/e2e-idea-1/schedule`, {
+    headers: { Authorization: `Bearer ${token}` }, data: { scheduled_for: due },
   });
   expect(schedRes.ok()).toBeTruthy();
 

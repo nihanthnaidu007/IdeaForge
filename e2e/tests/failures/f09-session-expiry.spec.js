@@ -1,27 +1,41 @@
-// F09 — Session expiry/revocation mid-flow: the client clears the dead
-// session and lands the user on the public route with a login affordance
-// (PR #7's session-expired copy contract).
+// F09 — Revoked session mid-flow: the dead access token's 401 triggers the
+// single-flight refresh; the revoked refresh fails (reuse detection revokes
+// the family) and the shipped handler surfaces "Your session expired — log
+// in again." — either the redirect to / or the toast is the honest signal.
 import { test, expect } from "@playwright/test";
 import {
-  WEB, API, installDenyList, authedStorage, routes,
+  WEB, API, installDenyList, authedStorage, setScenario, routes,
 } from "../../utils/helpers.js";
 
 test("F09: revoked session mid-flow → clean landing, login affordance", async ({ page, request }) => {
   installDenyList(page, test.info());
   const email = `f09-${Date.now()}@e2e.ideaforge.dev`;
   const storage = await authedStorage(request, email);
-  const token = storage.origins[0].localStorage[0].value;
+  const entries = storage.origins[0].localStorage;
+  const token = entries.find((e) => e.name === "ideaforge_token")?.value;
+  const refresh = entries.find((e) => e.name === "ideaforge_refresh")?.value;
 
-  // Revoke server-side (the F09 precondition: the bearer is dead).
-  const me = await request.get(`${API}${routes.auth.me}`, { headers: { Authorization: `Bearer ${token}` } });
-  expect(me.ok()).toBeTruthy();
-  const list = await request.get(`${API}${routes.saved.list}`, { headers: { Authorization: `Bearer ${token}` } });
-  expect(list.ok()).toBeTruthy();
+  // Revoke server-side: logout bumps token_version and revokes the family.
+  const logout = await request.post(`${API}${routes.auth.logout}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(logout.ok()).toBeTruthy();
 
+  // Mid-flow: the browser still holds the (now dead) token pair.
   await page.goto(WEB);
-  await page.evaluate((t) => localStorage.setItem("ideaforge_token", t), token);
+  await page.evaluate(([t, r]) => {
+    localStorage.setItem("ideaforge_token", t);
+    if (r) localStorage.setItem("ideaforge_refresh", r);
+  }, [token, refresh]);
+
   await page.goto(`${WEB}/board`);
-  // Dead-session guard: never stuck on a protected route (poll, don't sleep).
-  await expect(page).not.toHaveURL(/board/, { timeout: 15_000 });
+  await expect.poll(async () => {
+    const redirected = !page.url().includes("/board");
+    const toast = await page
+      .getByText("Your session expired — log in again.")
+      .isVisible()
+      .catch(() => false);
+    return redirected || toast;
+  }, { timeout: 15_000 }).toBe(true);
   await expect(page.getByTestId("nav-login-btn")).toBeVisible();
 });

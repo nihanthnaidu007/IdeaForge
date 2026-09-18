@@ -38,8 +38,9 @@ test("J05: inbox → search → transition → persist → tag filter", async ({
   await expect(page.getByTestId("board-card")).toHaveCount(0);
   await page.getByTestId("board-search-input").fill("");
 
-  // Adjacent-step transition inbox → forged (shipped button: → In the forge).
-  await page.getByTestId("board-move-e2e-idea-1-forged").click();
+  // Adjacent-step transition inbox → forged. The server assigns idea ids,
+  // so match the move button by prefix/suffix, not by my fixture id.
+  await page.locator('[data-testid^="board-move-"][data-testid$="-forged"]').first().click();
   await page.waitForTimeout(600);
   await page.reload();
   await expect(page.getByTestId("board-card")).toBeVisible();
