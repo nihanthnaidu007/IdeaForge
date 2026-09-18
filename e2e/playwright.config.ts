@@ -57,7 +57,14 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   retries: 0,
-  reporter: [["list"]],
+  reporter: [
+    ["list"],
+    // HTML report + per-test error-context.md land even on failure; CI uploads
+    // playwright-report/ and test-results/ for offline diagnosis.
+    ["html", { outputFolder: "playwright-report", open: "never" }],
+  ],
+  use: { trace: "retain-on-failure" },
+  outputDir: "test-results",
   projects: [
     // The spec's AC row 6 composite: register → keys → research → ideas →
     // variant → save → board shows entry. Own project so red is visible.
