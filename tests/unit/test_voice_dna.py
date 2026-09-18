@@ -282,8 +282,9 @@ async def test_extraction_writes_usage_event(
     )
     rows = list(fake_db.usage_events.docs.values())
     assert len(rows) == 1
-    assert rows[0]["event"] == "voice_extraction"
-    assert rows[0]["sample_count"] == 3
+    assert rows[0]["event"] == "voice_extracted"
+    assert rows[0]["provider"] == "openai"
+    assert rows[0]["count"] == 3
 
 
 # --- prompt pair is the craft pack's, slot-filled -----------------------------

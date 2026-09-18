@@ -154,7 +154,11 @@ async def extract_voice_profile(
 
     # Honest-analytics substrate: extractions are a real usage event.
     await usage.record_usage_event(
-        db, user_id, "voice_extraction", sample_count=len(samples)
+        db,
+        user_id,
+        usage.VOICE_EXTRACTED,
+        provider=provider,
+        count=len(samples),
     )
 
     doc = await db.voice_profiles.find_one({"user_id": user_id}, {"_id": 0})
