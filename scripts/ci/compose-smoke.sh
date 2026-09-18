@@ -50,7 +50,7 @@ EMAIL="smoke-$(date +%s)@smoke.ideaforge.dev"
 BODY="{\"name\":\"Smoke\",\"email\":\"$EMAIL\",\"password\":\"correct-horse-42\"}"
 curl -fsS -X POST http://localhost:3000/api/auth/register \
   -H 'Content-Type: application/json' -d "$BODY" > /tmp/ideaforge-smoke-register.json
-TOK=$(python3 -c "import json;print(json.load(open('/tmp/ideaforge-smoke-register.json'))['access_token'])")
+TOK=$(python3 -c "import json;print(json.load(open('/tmp/ideaforge-smoke-register.json'))['token'])")
 curl -fsS http://localhost:3000/api/auth/me -H "Authorization: Bearer $TOK" | grep -q "$EMAIL"
 
 echo "--- containers run non-root"
