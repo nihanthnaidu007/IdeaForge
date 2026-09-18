@@ -25,8 +25,14 @@ test("J04: insights → variants → hook swap with cost hints", async ({ page, 
   await expect(page.getByTestId("insights-0")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("insights-0")).toContainText("golden set");
 
-  // Variants: three materially distinct fixture drafts.
+  // The format pick drives the variant generation; three distinct drafts.
+  await page.getByTestId("format-hot-take-btn").click();
   await expect(page.getByText("Hot take: your RAG demo dies").first()).toBeVisible({ timeout: 30_000 });
+
+  // Pick a variant, craft the post — the hook picker lives in the post flow.
+  await page.getByTestId("variant-pick-0-btn").click();
+  await page.getByTestId("craft-post-btn").click();
+  await expect(page.getByTestId("post-content")).toBeVisible({ timeout: 20_000 });
 
   // Hook swap: swap a hook into the draft — the cost hint and the new
   // hook's copy both appear.

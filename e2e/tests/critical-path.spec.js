@@ -36,8 +36,10 @@ test("critical path: register → keys → research → forge → variants → s
   await expect(page.getByTestId("insights-0")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("insights-0")).toContainText("golden set");
 
-  // Variants render with the fixture content, then craft the post.
-  await expect(page.getByText("Build the eval before the agent").first()).toBeVisible({ timeout: 30_000 });
+  // The format pick drives the variant generation (VariantCompare's picker).
+  await page.getByTestId("format-hot-take-btn").click();
+  await expect(page.getByText("Hot take: your RAG demo dies").first()).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("variant-pick-0-btn").click();
   await page.getByTestId("craft-post-btn").click();
   await expect(page.getByTestId("post-content")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("post-content")).toContainText("golden set");

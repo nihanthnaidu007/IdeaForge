@@ -44,7 +44,9 @@ test("J05: inbox → search → transition → persist → tag filter", async ({
   await page.waitForTimeout(600);
   await page.reload();
   await expect(page.getByTestId("board-card")).toBeVisible();
-  await expect(page.getByTestId("board-card")).toContainText(/forge|In the forge/i);
+  // The card's move set re-renders — "-forged" disappears (you can't move
+  // to the status you're already in).
+  await expect(page.locator('[data-testid$="-forged"]')).toHaveCount(0);
 
   // Tag filter narrows and restores.
   await page.getByTestId("board-tag-filter").click();

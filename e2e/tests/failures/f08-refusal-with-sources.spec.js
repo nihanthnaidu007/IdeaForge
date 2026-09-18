@@ -14,7 +14,7 @@ test("F08: sourced insight call refuses → additive error, ideas untouched", as
 
   const res = await request.post(`${API}/api/idea-insights`, {
     headers: { Authorization: `Bearer ${token}` },
-    data: { idea_id: "e2e-idea-1", niche: "AI agents", tone: "practical" },
+    data: { idea: { id: "e2e-idea-1", title: "RAG evals are the new unit tests", rating: 8.4 }, niche: "AI agents", tone: "practical" },
   });
   expect(res.status()).toBe(502);
   const body = await res.json();

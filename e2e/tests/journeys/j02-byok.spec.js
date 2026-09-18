@@ -25,6 +25,10 @@ test("J02: save Anthropic key → probe uses the user's key → hint stays maske
 
   await page.getByTestId("anthropic-key-input").fill(USER_KEY);
   await page.getByTestId("save-anthropic-btn").click();
+  // saveApiKey updates status and clears the input but doesn't refetch
+  // key_hints — reload so the masked hint comes back from the server.
+  await page.reload();
+  await expect(page.getByTestId("anthropic-key-input")).toBeVisible();
   await expect(page.getByTestId("anthropic-key-hint")).toBeVisible();
   const hint = await page.getByTestId("anthropic-key-hint").innerText();
   expect(hint).toContain("4321");            // last-4 only

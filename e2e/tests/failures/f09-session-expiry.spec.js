@@ -18,6 +18,7 @@ test("F09: revoked session mid-flow → clean landing, login affordance", async 
   // Revoke server-side: logout bumps token_version and revokes the family.
   const logout = await request.post(`${API}${routes.auth.logout}`, {
     headers: { Authorization: `Bearer ${token}` },
+    data: { refresh_token: refresh },
   });
   expect(logout.ok()).toBeTruthy();
 

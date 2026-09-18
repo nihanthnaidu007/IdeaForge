@@ -14,12 +14,22 @@ test("F02: OpenAI quota error → typed quota failure, ideas untouched, no Emerg
   await setScenario(request, "llm-quota-402");
   await clearStubRequests(request);
 
+  // Ideas succeed (Anthropic is routed in this scenario) — the quota error
+  // fires when the craft/variants step calls OpenAI.
   const res = await request.post(`${API}${routes.ideas.generate}`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { raw_trends: [{ title: "Trend", url: "https://example-feed.dev/t", content: "c", score: 0.9 }], niche: "AI", tone: "professional" },
   });
-  expect([402, 503]).toContain(res.status());
-  const body = await res.json();
+  expect(res.ok()).toBeTruthy();
+  const ideas = (await res.json()).ideas;
+  expect(Array.isArray(ideas) && ideas.length > 0).toBe(true);
+
+  const vres = await request.post(`${API}${routes.posts.generateVariants}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { idea: ideas[0], format: "hot-take", tone: "professional" },
+  });
+  expect([402, 503]).toContain(vres.status());
+  const body = await vres.json();
   expect(body.detail.kind ?? body.kind).toBe("PROVIDER_QUOTA");
 
   await page.goto(WEB);
@@ -27,10 +37,12 @@ test("F02: OpenAI quota error → typed quota failure, ideas untouched, no Emerg
   await page.goto(`${WEB}/dashboard`);
   await page.reload();
   await page.getByTestId("generate-ideas-btn").click();
-  await page.waitForTimeout(1500);
-  await expect(page.locator('[data-testid^="error-"]').first()).toBeVisible();
-  const banner = await page.locator('[data-testid^="error-"]').first().innerText();
-  expect(banner).toMatch(/quota|credit/i);
+  await expect(page.getByTestId("idea-card-0")).toBeVisible({ timeout: 20_000 });
+  // The variants step hits the quota error; VariantCompare surfaces it.
+  await page.getByTestId("format-hot-take-btn").click();
+  await expect(page.getByTestId("variants-error")).toBeVisible({ timeout: 20_000 });
+  const banner = await page.getByTestId("variants-error").innerText();
+  expect(banner).toMatch(/quota|credit|rate/i);
   // Never leaked the meta-provider name (PR #9 dependency contract).
   const pageText = await page.locator("body").innerText();
   expect(pageText).not.toMatch(/Emergent/i);

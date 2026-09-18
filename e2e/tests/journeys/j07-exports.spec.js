@@ -52,7 +52,16 @@ test("J07: board MD + CSV and queue ICS downloads", async ({ page, request }) =>
 
   // ICS export from the queue section (one scheduled row via the API).
   const due = new Date(Date.now() + 3_600_000).toISOString();
-  const schedRes = await request.post(`${API}/queue/e2e-idea-1/schedule`, {
+  // The schedule endpoint needs a REAL saved-idea id — the server assigns them.
+  const boardRes = await request.get(`${API}${routes.board.list}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(boardRes.ok()).toBeTruthy();
+  const boardData = await boardRes.json();
+  const items = Array.isArray(boardData) ? boardData : boardData.items ?? [];
+  const ideaId = items[0]?.idea_id ?? items[0]?.id ?? items[0]?._id;
+  expect(ideaId).toBeTruthy();
+  const schedRes = await request.post(`${API}/queue/${ideaId}/schedule`, {
     headers: { Authorization: `Bearer ${token}` }, data: { scheduled_for: due },
   });
   expect(schedRes.ok()).toBeTruthy();

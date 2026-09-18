@@ -29,8 +29,11 @@ test("J09: empty state → validated manual entry → summary + honest compariso
   await page.reload();
   await expect(page.getByTestId("metrics-form")).toBeVisible({ timeout: 15_000 });
 
+  // Pick the idea first — the submit is disabled without one.
+  await page.getByTestId("metrics-idea-select").selectOption({ index: 1 });
+
   // Manual entry: numbers only — the four count fields in DOM order.
-  const numbers = page.getByTestId("metrics-form").locator('input[type="number"]');
+  const numbers = page.getByTestId("metrics-form").locator('input[inputmode="numeric"]');
   await numbers.nth(0).fill("1200");
   await numbers.nth(1).fill("84");
   await numbers.nth(2).fill("12");
@@ -42,7 +45,6 @@ test("J09: empty state → validated manual entry → summary + honest compariso
   await expect(page.getByTestId("metrics-field-error")).toBeVisible();
 
   await numbers.nth(0).fill("1200");
-  await page.getByTestId("metrics-idea-select").selectOption({ index: 1 });
   await page.getByTestId("metrics-submit-btn").click();
 
   // The logged numbers render; the comparison is honest about the zero baseline.

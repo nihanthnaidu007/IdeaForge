@@ -11,7 +11,7 @@ test("F07: empty Tavily results → typed refusal, zero fabricated ideas", async
   const token = storage.origins[0].localStorage[0].value;
   await setScenario(request, "forge-no-sources");
 
-  const res = await request.post(`${API}/api/generate-ideas`, {
+  const res = await request.post(`${API}/api/research`, {
     headers: { Authorization: `Bearer ${token}` },
     data: { niche: "AI agents", tone: "practical" },
   });
