@@ -16,6 +16,7 @@ from app.routers import (
     queue,
     research,
     saved,
+    usage,
     voice,
 )
 
@@ -34,3 +35,4 @@ api_router.include_router(export.router)
 api_router.include_router(preview.router)
 api_router.include_router(voice.router)
 api_router.include_router(hooks.router)
+api_router.include_router(usage.router)
