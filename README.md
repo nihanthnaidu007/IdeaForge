@@ -76,11 +76,10 @@ web (nginx serving the Vite build), Mongo 7, and optional Redis. Multi-stage, no
 images; nginx terminates the SPA and proxies `/api` to the API service.
 
 ```bash
-cp .env.example .env              # or compose-level env; see backend/.env.example
 cp backend/.env.example backend/.env   # fill MONGO_URL, JWT_SECRET, ENCRYPTION_MASTER_KEY
 docker compose up -d --build      # add --profile redis for the optional cache
 docker compose ps                 # api and web report healthy
-open http://localhost:8080
+open http://localhost:3000        # web publishes 3000:8080
 ```
 
 Health checks: `/health/live` (process) and `/health/ready` (Mongo + hooks seeded).
