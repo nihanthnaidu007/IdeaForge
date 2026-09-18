@@ -2,13 +2,19 @@
 // The 4th login inside a minute is a typed 429 with Retry-After; the UI
 // surfaces the typed state, never a generic crash.
 import { test, expect } from "@playwright/test";
-import { WEB, E2E_PASSWORD, registerViaApi } from "../../utils/helpers.js";
+import { WEB, E2E_PASSWORD } from "../../utils/helpers.js";
 
-const RL_API = "http://127.0.0.1:8002";
+// Sourced from the ratelimit config (E2E_API_BASE) — never the main project's
+// :8000, which does not exist in standalone CI runs of this config.
+const RL_API = process.env.E2E_API_BASE;
+if (!RL_API) throw new Error("E2E_API_BASE unset — F03b runs only under playwright.ratelimit.config.ts");
 
 test("F03b: 4th login in a minute → 429 with Retry-After, typed UI error", async ({ page }) => {
   const email = `f03b-${Date.now()}@e2e.ideaforge.dev`;
-  await registerViaApi(page.request, email);
+  const reg = await page.request.post(`${RL_API}/api/auth/register`, {
+    data: { email, password: E2E_PASSWORD, name: "E2E" },
+  });
+  if (!reg.ok()) throw new Error(`register ${email} → ${reg.status()} ${await reg.text()}`);
 
   let saw429 = false;
   for (let attempt = 0; attempt < 5; attempt++) {

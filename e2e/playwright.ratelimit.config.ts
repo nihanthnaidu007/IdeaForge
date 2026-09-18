@@ -5,6 +5,10 @@ import { webServers } from "./playwright.config";
 // on a dedicated backend instance (and the preview proxy pointed at it), so
 // this config boots its own stack on shifted ports.
 const RL_BACKEND = "http://127.0.0.1:8002";
+// Each npx invocation tears down its own webservers — specs under THIS config
+// must reach its :8002 backend, never the main project's :8000 (F03b CI red,
+// run 35328956125).
+process.env.E2E_API_BASE = RL_BACKEND;
 
 const rlWebServers = webServers.map((server) => {
   const env = (server.env ?? {}) as Record<string, string>;
