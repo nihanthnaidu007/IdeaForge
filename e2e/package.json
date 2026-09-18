@@ -1,0 +1,12 @@
+{
+  "name": "ideaforge-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ratelimit": "playwright test -c playwright.ratelimit.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

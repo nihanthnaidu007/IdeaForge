@@ -1,0 +1,3 @@
+{"post_text": "Nobody asks about eval budgets until the first hallucination lands in a customer meeting.\n\nThen the same team that shipped without a golden set wants to know why nobody caught it. Because you measured nothing, that's why.\n\nBuild the eval before the agent. It's cheaper than the incident.", "hook_pattern_id": "H09", "format": "hot_take", "variant": "A",
+ "sourced_claims": [{"claim": "Most teams ship RAG without a golden set", "source_url": "https://www.reddit.com/r/LocalLLaMA/comments/e2e_q1a/", "source_label": "reddit.com/r/LocalLLaMA"}],
+ "speculative_claims": [], "notes": "Hook swap: H09 question-tease."}

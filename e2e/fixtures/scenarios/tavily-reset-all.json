@@ -1,0 +1,1 @@
+{"tavily": [{"match_query_contains": "site:reddit.com", "close_connection": true}, {"match_query_contains": "viral news today", "close_connection": true}, {"match_query_contains": "topics LinkedIn", "close_connection": true}]}

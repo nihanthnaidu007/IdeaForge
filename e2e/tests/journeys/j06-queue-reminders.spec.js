@@ -1,0 +1,64 @@
+// J06 — Queue & reminders: schedule a saved idea from the board, the queue
+// row renders with the time, the reminder worker delivers a visible reminder
+// card within the interval. No LinkedIn egress, ever.
+import { test, expect } from "@playwright/test";
+import {
+  WEB, API, installDenyList, authedStorage, setScenario, routes, stubRequests, clearStubRequests,
+} from "../../utils/helpers.js";
+
+test("J06: schedule → queue row → reminder card within the interval", async ({ page, request }) => {
+  test.setTimeout(150_000);
+  installDenyList(page, test.info());
+  const email = `j06-${Date.now()}@e2e.ideaforge.dev`;
+  const storage = await authedStorage(request, email);
+  const token = storage.origins[0].localStorage[0].value;
+  await setScenario(request, "forge-happy");
+  await clearStubRequests(request);
+
+  // Seed one saved idea via the shipped API.
+  const saveRes = await request.post(`${API}${routes.saved.save}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      id: "e2e-idea-1", title: "RAG evals are the new unit tests", topic_title: "RAG evals are the new unit tests",
+      rating: 8.4, rating_explanation: "High tension.", targeted_audience: "Platform leads",
+      why_it_matters: "Eval discipline decides ship vs stall.", key_aspects: ["Golden sets"], post_angles: [],
+    },
+  });
+  expect(saveRes.ok()).toBeTruthy();
+
+  // Schedule through the board's shipped scheduling form.
+  await page.goto(WEB);
+  await page.evaluate((t) => localStorage.setItem("ideaforge_token", t), token);
+  await page.goto(`${WEB}/board`);
+  await page.reload();
+  await expect(page.getByTestId("board-card").first()).toBeVisible();
+  await page.getByTestId("board-card-schedule-btn").first().click();
+  await expect(page.getByTestId("schedule-form")).toBeVisible();
+
+  // Due in ~70s so the worker (interval: 1s in E2E env) delivers promptly.
+  const due = new Date(Date.now() + 70_000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const whenLocal = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`;
+  await page.getByTestId("schedule-idea-select").click();
+  await page.getByRole("option", { name: /RAG evals/ }).first().click();
+  await page.getByTestId("schedule-when-input").fill(whenLocal);
+  await page.getByTestId("schedule-submit-btn").click();
+  await page.waitForTimeout(1000);
+
+  // Queue surface: /queue if routed, otherwise the dashboard draft queue.
+  await page.goto(`${WEB}/queue`);
+  if (await page.getByTestId("not-found-page").count()) {
+    await page.goto(`${WEB}/dashboard`);
+  }
+  await expect(page.getByTestId("queue-row").first()).toBeVisible();
+  await expect(page.getByTestId("queue-scheduled-count")).toBeVisible();
+
+  // The reminder: due passes, worker ticks within REMINDER_INTERVAL_SECONDS=1,
+  // the notification lands in the UI.
+  await expect(page.getByTestId("queue-reminder-card").first()).toBeVisible({ timeout: 110_000 });
+  await expect(page.getByTestId("queue-notifications")).toBeVisible();
+
+  // Hard boundary: the reminder pipeline never touches LinkedIn.
+  const records = await stubRequests(request);
+  expect(records.filter((r) => /linkedin/.test(JSON.stringify(r)))).toEqual([]);
+});

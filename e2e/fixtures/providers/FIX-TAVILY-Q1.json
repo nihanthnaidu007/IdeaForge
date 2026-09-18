@@ -1,0 +1,5 @@
+{"query": "AI latest trends site:reddit.com", "follow_up_questions": [], "answer": null,
+ "results": [
+  {"title": "RAG evals are the new unit tests — change my mind", "url": "https://www.reddit.com/r/LocalLLaMA/comments/e2e_q1a/", "content": "Teams keep shipping RAG demos without a golden set. The engineers who skipped evals are finding out in production. Nobody asks about eval budgets until the first hallucination lands in a customer meeting.", "score": 0.9821, "published_date": "2026-09-12"},
+  {"title": "We replaced our LLM judge with 40 golden questions", "url": "https://www.reddit.com/r/MachineLearning/comments/e2e_q1b/", "content": "LLM-as-judge drifted after the model swap. We rebuilt CI around a golden set of real questions. Two weekends, zero regressions since.", "score": 0.9504, "published_date": "2026-09-14"},
+  {"title": "Show r/LocalLLaMA: open-source eval harnesses compared", "url": "https://www.reddit.com/r/LocalLLaMA/comments/e2e_q1c/", "content": "Compared three open-source eval harnesses on the same golden set. The difference is CI integration, not scoring.", "score": 0.9113, "published_date": "2026-09-15"}]}

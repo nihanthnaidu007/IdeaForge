@@ -71,10 +71,39 @@ operators may optionally set fallback keys via environment.
 
 ## Deployment
 
-> **Landing section** — filled in by the deploy PR: the target is a single
-> `docker compose up` (API + web + Mongo + optional Redis) with multi-stage, non-root
-> images.
+Self-hosting target: a single `docker compose up` — API (gunicorn + uvicorn workers),
+web (nginx serving the Vite build), Mongo 7, and optional Redis. Multi-stage, non-root
+images; nginx terminates the SPA and proxies `/api` to the API service.
+
+```bash
+cp .env.example .env              # or compose-level env; see backend/.env.example
+cp backend/.env.example backend/.env   # fill MONGO_URL, JWT_SECRET, ENCRYPTION_MASTER_KEY
+docker compose up -d --build      # add --profile redis for the optional cache
+docker compose ps                 # api and web report healthy
+open http://localhost:8080
+```
+
+Health checks: `/health/live` (process) and `/health/ready` (Mongo + hooks seeded).
+Operator runbook: [`docs/operator-guide.md`](docs/operator-guide.md).
 
 ## License
 
 [MIT](LICENSE) — © 2026 Kalisetti Nihanth Naidu.
+
+
+## End-to-end tests (Playwright, mocked providers)
+
+The E2E harness boots the real backend and the production Vite build (preview mode)
+against a deterministic provider stub on port 9001 — no real provider key is ever
+used, and CI never holds one.
+
+```bash
+mongod &                          # or docker run -p 27017:27017 mongo:7
+cd frontend && npm ci && npm run build && cd ..
+cd e2e && npm install && npx playwright install chromium
+npx playwright test               # journeys + failures + critical path
+npx playwright test -c playwright.ratelimit.config.ts   # app-level 429 (F03b)
+```
+
+Boundaries: the stub is the only provider; tests hard-fail on any request that
+resolves a real provider host. Scenario fixtures live in `e2e/fixtures/`.

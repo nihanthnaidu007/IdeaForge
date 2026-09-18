@@ -1,0 +1,3 @@
+{"post_text": "We found the regression in production. The judge model had changed under us.\n\nThree weeks earlier we swapped to the newer model — same prompts, same pipeline, zero re-scoring. The verdicts moved and nobody noticed.\n\nThe fix was embarrassing: 40 golden questions, one weekend, CI red on drift ever since.", "hook_pattern_id": "H07", "format": "story", "variant": "B",
+ "sourced_claims": [{"claim": "Judges drift after model swaps", "source_url": "https://www.reddit.com/r/MachineLearning/comments/e2e_q1b/", "source_label": "reddit.com/r/MachineLearning"}],
+ "speculative_claims": ["Three weeks is the typical detection lag"], "notes": "Stance: narrative."}

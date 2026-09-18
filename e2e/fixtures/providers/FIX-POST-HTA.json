@@ -1,0 +1,3 @@
+{"post_text": "Hot take: your RAG demo dies the day someone asks \"how do you know it's right?\"\n\nA golden set of 40 real questions would have caught it. Most teams ship without one — then debug in production.\n\nBuild the eval before the agent. It's cheaper than the incident.", "hook_pattern_id": "H02", "format": "hot_take", "variant": "A",
+ "sourced_claims": [{"claim": "Most teams ship RAG without a golden set", "source_url": "https://www.reddit.com/r/LocalLLaMA/comments/e2e_q1a/", "source_label": "reddit.com/r/LocalLLaMA"}],
+ "speculative_claims": ["40 questions is the right starting size"], "notes": "Stance: maximal."}

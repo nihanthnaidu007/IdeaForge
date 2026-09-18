@@ -1,0 +1,11 @@
+{"structure": {"opening_pattern": "Opens on a number or a contrary one-liner; never opens with context or a greeting.", "body_pattern": "Short declarative paragraphs, one concrete example per point.", "closing_pattern": "Closes with an instruction the reader can do today.", "paragraph_style": "One to two sentences per line, blank line between beats."},
+ "vocabulary": {"register": "Plain practitioner language — eval, budget, POC, golden set; no hype adjectives.", "signature_phrases": ["Nobody asks about", "That's backwards", "Ask me about"], "verb_energy": "Active verbs, present tense, second person."},
+ "energy": {"overall_level": 7, "punctuation_style": "Periods over exclamation; em-dash for the turn.", "emphasis_tactics": "Concrete numbers instead of intensifiers."},
+ "sentence_rhythm": {"avg_sentence_length_words": 11.5, "variation": "Short declaratives with an occasional long sentence for the turn."},
+ "signature_moves": [
+  {"move": "Opens on a number or a contrary one-liner", "evidence": "Two of three samples open on a hard number."},
+  {"move": "Turns on an em-dash", "evidence": "Every sample uses an em-dash pivot after the opening claim."},
+  {"move": "Closes with a doable instruction", "evidence": "All three samples end with an imperative."}],
+ "do_list": ["Open on a number or a contrary one-liner; never open with context or a greeting.", "Give one concrete example per claim.", "Close with an instruction the reader can do today."],
+ "dont_list": ["Never use emoji or exclamation marks.", "Never open with context or a greeting.", "Never use hype adjectives like 'revolutionary'."],
+ "confidence": 0.82, "notes": "Extracted from 3 samples; numbers-forward, no greetings.", "sample_count": 3}
