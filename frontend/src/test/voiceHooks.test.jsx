@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import VoiceDNAEditor from "@/components/settings/VoiceDNAEditor";
 import HookPicker from "@/components/dashboard/HookPicker";
@@ -514,5 +514,122 @@ describe("HookPicker", () => {
     // Nothing was changed: the catalog still renders, no Mine switch happened.
     expect(screen.getByTestId("hook-row-H01")).toBeInTheDocument();
     expect(screen.getByTestId("hook-mine-chip")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("edits a user hook through the editor and PUTs only the pattern", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    // The editor opens pre-filled with the row's current pattern.
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    expect(editor).toHaveValue("My own pattern about {topic}.");
+
+    // fireEvent, not userEvent.type: hook patterns use {placeholder} braces,
+    // which userEvent would parse as special-key tokens.
+    const nextPattern = "Rewritten pattern: {angle} without the throat-clearing";
+    await userEvent.clear(editor);
+    fireEvent.change(editor, { target: { value: nextPattern } });
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    // HookUpdate forbids extra fields — the PUT carries the pattern only.
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith("/hooks/H52", {
+        text_pattern: nextPattern,
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith("Hook updated.");
+    // Saved: the editor closes and the Mine list refreshes without a skeleton.
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId("hook-row-H52")).toBeInTheDocument();
+    expect(screen.queryByTestId("hook-edit-form-H52")).not.toBeInTheDocument();
+  });
+
+  it("blocks an edit below the pattern floor with an inline error and no request", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "no");
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    expect(await screen.findByTestId("hook-edit-error-H52")).toHaveTextContent(
+      "Pattern is required — at least 3 characters.",
+    );
+    expect(api.put).not.toHaveBeenCalled();
+    // The user's draft stays on screen — a failed edit loses nothing.
+    expect(screen.getByTestId("hook-edit-form-H52")).toBeInTheDocument();
+  });
+
+  it("blocks an edit above the pattern ceiling with an inline error and no request", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, `x${"y".repeat(280)}`);
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    expect(await screen.findByTestId("hook-edit-error-H52")).toHaveTextContent(
+      "Pattern is too long — 280 characters max.",
+    );
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("deletes a user hook only after the inline confirm", async () => {
+    api.get
+      .mockResolvedValueOnce(hookListWithUserHook)
+      .mockResolvedValueOnce(hookListResponse);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+
+    // First click asks: the confirm block appears, no DELETE yet.
+    await userEvent.click(screen.getByTestId("hook-delete-H52"));
+    expect(await screen.findByTestId("hook-delete-confirm-H52")).toHaveTextContent(
+      "Delete this hook? This can't be undone.",
+    );
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Second click commits.
+    await userEvent.click(screen.getByTestId("hook-delete-confirm-btn-H52"));
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith("/hooks/H52");
+    });
+    expect(toast.success).toHaveBeenCalledWith("Hook deleted.");
+    // The picker stays in Mine, which now shows its honest empty state — no
+    // silent filter flip. The empty state's affordance walks back to All.
+    expect(await screen.findByTestId("hooks-empty-mine")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("hooks-browse-builtins-btn"));
+    await screen.findByTestId("hook-row-H01");
+    expect(screen.queryByTestId("hook-row-H52")).not.toBeInTheDocument();
+  });
+
+  it("cancel in the delete confirm makes no request and keeps the row", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-delete-H52"));
+    await userEvent.click(screen.getByTestId("hook-delete-cancel-H52"));
+
+    expect(api.delete).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("hook-delete-confirm-H52")).not.toBeInTheDocument();
+    expect(screen.getByTestId("hook-row-H52")).toBeInTheDocument();
   });
 });
