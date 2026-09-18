@@ -35,9 +35,14 @@ test("J09: empty state → validated manual entry → summary + honest compariso
 
   // Pick the idea first — the submit is disabled without one.
   await page.getByTestId("metrics-idea-select").click();
-  await page.getByRole("option", { name: /RAG evals/i }).first().click();
+  // Scope to the Radix portal's listbox: the trigger embeds an aria-hidden
+  // native <select> whose <option> elements also match getByRole("option").
+  await page.getByRole("listbox").getByRole("option", { name: /RAG evals/i }).click({ timeout: 10_000 });
   // The radix trigger reflects the pick — fail fast if the value never bound.
   await expect(page.getByTestId("metrics-idea-select")).toContainText(/RAG evals/i);
+  // Disabled means onValueChange never fired — a crisp assertion here beats a
+  // 120s submit-click timeout.
+  await expect(page.getByTestId("metrics-submit-btn")).toBeEnabled();
 
   // Manual entry: numbers only — the four count fields in DOM order.
   const numbers = page.getByTestId("metrics-form").locator('input[inputmode="numeric"]');

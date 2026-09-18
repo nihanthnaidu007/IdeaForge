@@ -34,7 +34,9 @@ test("J08: extract voice → confidence + do/don't render → versioned re-extra
   await page.getByTestId("voice-extract-btn").click();
 
   await expect(page.getByTestId("voice-dna-profile")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("voice-confidence-chip")).toContainText("0.82");
+  // The chip renders the confidence TIER word, never the decimal (§3.4):
+  // 0.82 → "high" tier → "Confident".
+  await expect(page.getByTestId("voice-confidence-chip")).toContainText("Confident");
   await expect(page.getByTestId("voice-confidence-copy")).toBeVisible();
   const profile = await page.getByTestId("voice-dna-profile").innerText();
   expect(profile).toContain("Open on a number or a contrary one-liner");
@@ -58,7 +60,7 @@ test("J08: extract voice → confidence + do/don't render → versioned re-extra
   if (await runBtn.isVisible().catch(() => false)) {
     await runBtn.click();
   }
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("0.82");
+  await expect(page.getByTestId("voice-dna-profile")).toContainText("Confident");
   if (!(await page.getByTestId("voice-history").isVisible().catch(() => false))) {
     await page.getByTestId("voice-history-toggle").click();
   }

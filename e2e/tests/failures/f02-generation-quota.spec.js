@@ -38,6 +38,10 @@ test("F02: OpenAI quota error → typed quota failure, ideas untouched, no Emerg
   await page.reload();
   await page.getByTestId("generate-ideas-btn").click();
   await expect(page.getByTestId("idea-card-0")).toBeVisible({ timeout: 20_000 });
+  // Shipped selection flow: expand the collapsed card, then Explore Post
+  // Formats (selectIdea) — the FormatPicker renders only after selection.
+  await page.getByTestId("idea-card-0").click();
+  await page.getByTestId("explore-formats-0-btn").click();
   // The variants step hits the quota error; VariantCompare surfaces it.
   await page.getByTestId("format-hot-take-btn").click();
   await expect(page.getByTestId("variants-error")).toBeVisible({ timeout: 20_000 });

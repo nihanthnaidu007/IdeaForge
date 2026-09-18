@@ -26,6 +26,10 @@ test("J04: insights → variants → hook swap with cost hints", async ({ page, 
   await expect(page.getByTestId("insights-0")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("insights-0")).toContainText("golden set");
 
+  // Shipped selection flow: Explore Post Formats calls selectIdea — the
+  // FormatPicker (and format-hot-take-btn) render only after it.
+  await page.getByTestId("explore-formats-0-btn").click();
+
   // The format pick drives the variant generation; three distinct drafts.
   await page.getByTestId("format-hot-take-btn").click();
   await expect(page.getByText("Hot take: your RAG demo dies").first()).toBeVisible({ timeout: 30_000 });
