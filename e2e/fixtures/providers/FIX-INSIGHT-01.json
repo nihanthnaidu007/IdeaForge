@@ -1,0 +1,12 @@
+{"schema_version": 1,
+ "audience": {"primary": "Platform and ML-engineering leads", "secondary": "Staff engineers shipping RAG", "reading_trigger": "They are being asked to ship agents without eval infrastructure."},
+ "why_it_matters": "RAG without evals is a demo, not a product — the fix is a golden set before scale.",
+ "key_aspects": [
+  {"aspect": "Golden sets", "tension": "Teams skip them and discover regressions in production."},
+  {"aspect": "LLM-as-judge", "tension": "Judges drift with model updates; human sampling stays necessary."},
+  {"aspect": "CI gating", "tension": "Eval latency fights deploy speed; budgets must be explicit."}],
+ "post_angles": [
+  {"angle": "Ship the golden set before the agent.", "format": "hot_take", "why_now": "Agent incidents spike while eval budgets stay at zero."},
+  {"angle": "Your judge model is a moving target.", "format": "contrarian", "why_now": "Model swaps silently change verdicts."},
+  {"angle": "Eval latency is a deploy tax worth paying.", "format": "how_to", "why_now": "CI-integrated evals just became practical."}],
+ "evidence_gaps": ["No public benchmark for internal RAG eval cost."]}

@@ -1,0 +1,5 @@
+{"query": "AI viral news today", "follow_up_questions": [], "answer": null,
+ "results": [
+  {"title": "The hot take about agent budgets nobody wants to say out loud", "url": "https://news.example-feed.dev/agents/budget-hot-take", "content": "Agent budgets are backwards: teams spend on model calls before they spend on measurement. That's backwards. Measurement first, calls second.", "score": 0.9774, "published_date": "2026-09-17"},
+  {"title": "Why your AI demo dies in week three", "url": "https://news.example-feed.dev/practice/demo-week-three", "content": "Week three is when the demo meets real inputs. The fix is boring: constrain inputs, measure outputs, rehearse failures.", "score": 0.9412, "published_date": "2026-09-16"},
+  {"title": "Evaluation debt is the new technical debt", "url": "https://news.example-feed.dev/evals/evaluation-debt", "content": "Every unscored change compounds into evaluation debt. Teams that pay it down early ship faster later.", "score": 0.9207, "published_date": "2026-09-17"}]}

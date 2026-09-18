@@ -7,6 +7,8 @@ failure is a typed error with an honest status.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import httpx
 import pytest
 from app.routers.preferences import _probe_key
@@ -116,7 +118,9 @@ async def test_tavily_429_classified_identically_on_both_paths(
         "app.routers.preferences.httpx.AsyncClient", _FakeProbeClient
     )
     with pytest.raises(ProviderRateLimitedError):
-        await _probe_key("tavily", "k")
+        await _probe_key(
+            "tavily", "k", SimpleNamespace(tavily_base_url=None)
+        )
 
 
 async def test_tavily_uses_bearer_header_not_body_key() -> None:

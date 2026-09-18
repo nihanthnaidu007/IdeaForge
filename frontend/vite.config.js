@@ -34,6 +34,11 @@ export default defineConfig({
   },
   preview: {
     port: 3000,
+    // E2E: the previewed production build calls same-origin /api; this proxy
+    // points it at the API under test (nginx does the same in compose).
+    proxy: process.env.VITE_PREVIEW_API_TARGET
+      ? { "/api": { target: process.env.VITE_PREVIEW_API_TARGET, changeOrigin: true } }
+      : undefined,
   },
   test: {
     environment: "jsdom",

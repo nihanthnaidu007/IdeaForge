@@ -17,3 +17,5 @@ cryptography==46.0.5
 # Direct LLM SDKs — the third-party scaffold proxy hop is gone (spec §Provider layer).
 anthropic==1.6.0
 openai==1.99.9
+# Container runtime process manager (backend/Dockerfile CMD).
+gunicorn==23.0.0

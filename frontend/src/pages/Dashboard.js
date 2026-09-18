@@ -447,7 +447,13 @@ const Dashboard = () => {
         rating_explanation: idea.rating_explanation,
         targeted_audience: ideaInsights.audience?.primary ?? null,
         why_it_matters: ideaInsights.why_it_matters ?? null,
-        key_aspects: ideaInsights.key_aspects ?? null,
+        // The save contract (SaveIdeaRequest.key_aspects) stores plain strings;
+        // insight cards carry structured {aspect, tension} rows — map to names.
+        key_aspects: Array.isArray(ideaInsights.key_aspects)
+          ? ideaInsights.key_aspects
+              .map((a) => (typeof a === "string" ? a : a.aspect))
+              .filter(Boolean)
+          : null,
         post_angles: ideaInsights.post_angles ?? null,
         evidence_gaps: ideaInsights.evidence_gaps ?? null,
         generated_post: withPost ? generatedPost : null,
