@@ -1,9 +1,10 @@
-// J06 — Queue & reminders: schedule a saved idea from the board, the queue
-// row renders with the time, the reminder worker delivers a visible reminder
-// card within the interval. No LinkedIn egress, ever.
+// J06 — Queue & reminders: the board's Remind-me button targets the card in
+// the DraftQueue schedule form (same page), the queue row renders, and the
+// reminder worker delivers a visible reminder card after the due time.
+// No LinkedIn egress, ever.
 import { test, expect } from "@playwright/test";
 import {
-  WEB, API, installDenyList, authedStorage, setScenario, routes, stubRequests, clearStubRequests,
+  WEB, API, installDenyList, authedStorage, setScenario, stubRequests, clearStubRequests, routes,
 } from "../../utils/helpers.js";
 
 test("J06: schedule → queue row → reminder card within the interval", async ({ page, request }) => {
@@ -15,7 +16,6 @@ test("J06: schedule → queue row → reminder card within the interval", async 
   await setScenario(request, "forge-happy");
   await clearStubRequests(request);
 
-  // Seed one saved idea via the shipped API.
   const saveRes = await request.post(`${API}${routes.saved.save}`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {
@@ -26,7 +26,7 @@ test("J06: schedule → queue row → reminder card within the interval", async 
   });
   expect(saveRes.ok()).toBeTruthy();
 
-  // Schedule through the board's shipped scheduling form.
+  // Schedule through the shipped flow: board card → Remind me → form.
   await page.goto(WEB);
   await page.evaluate((t) => localStorage.setItem("ideaforge_token", t), token);
   await page.goto(`${WEB}/board`);
@@ -39,22 +39,15 @@ test("J06: schedule → queue row → reminder card within the interval", async 
   const due = new Date(Date.now() + 70_000);
   const pad = (n) => String(n).padStart(2, "0");
   const whenLocal = `${due.getFullYear()}-${pad(due.getMonth() + 1)}-${pad(due.getDate())}T${pad(due.getHours())}:${pad(due.getMinutes())}`;
-  await page.getByTestId("schedule-idea-select").click();
-  await page.getByRole("option", { name: /RAG evals/ }).first().click();
+  await expect(page.getByTestId("schedule-target-chip")).toBeVisible();
   await page.getByTestId("schedule-when-input").fill(whenLocal);
   await page.getByTestId("schedule-submit-btn").click();
   await page.waitForTimeout(1000);
 
-  // Queue surface: /queue if routed, otherwise the dashboard draft queue.
-  await page.goto(`${WEB}/queue`);
-  if (await page.getByTestId("not-found-page").count()) {
-    await page.goto(`${WEB}/dashboard`);
-  }
   await expect(page.getByTestId("queue-row").first()).toBeVisible();
   await expect(page.getByTestId("queue-scheduled-count")).toBeVisible();
 
-  // The reminder: due passes, worker ticks within REMINDER_INTERVAL_SECONDS=1,
-  // the notification lands in the UI.
+  // The reminder: due passes, worker ticks within REMINDER_INTERVAL_SECONDS=1.
   await expect(page.getByTestId("queue-reminder-card").first()).toBeVisible({ timeout: 110_000 });
   await expect(page.getByTestId("queue-notifications")).toBeVisible();
 

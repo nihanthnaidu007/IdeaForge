@@ -129,8 +129,11 @@ def _serve(rule: dict[str, Any], provider: str) -> Any:
 
         return StreamingResponse(partial(), media_type="application/json")
     if "sequence" in rule:
-        idx = _sequence_idx.get(id(rule), 0)
-        _sequence_idx[id(rule)] = idx + 1
+        # Keyed by (scenario, provider, rule position) — the scenario file is
+        # re-read per request, so id(rule) would reset the counter each call.
+        key = (_state["scenario"], rule.get("_provider"), rule.get("_idx"))
+        idx = _sequence_idx.get(key, 0)
+        _sequence_idx[key] = idx + 1
         return _fixture(rule["sequence"][idx % len(rule["sequence"])])
     if "serve_status" in rule:
         content = _fixture(rule["serve_fixture"]) if rule.get("serve_fixture") else {"detail": "stub error"}
@@ -142,7 +145,9 @@ def _serve(rule: dict[str, Any], provider: str) -> Any:
 
 def _handle(provider: str, request: Request, body: dict[str, Any], wrap: bool) -> Any:
     _record(provider, request, body)
-    for rule in _rules(provider):
+    for idx, rule in enumerate(_rules(provider)):
+        rule["_provider"] = provider
+        rule["_idx"] = idx
         if _matched(rule, body):
             served = _serve(rule, provider)
             if isinstance(served, Response):

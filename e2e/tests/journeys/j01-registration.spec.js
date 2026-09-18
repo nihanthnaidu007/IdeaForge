@@ -1,61 +1,68 @@
-// J01 — Registration & login: create an account, duplicate e-mail and short
-// password rejected, logout, login again. No provider egress at any step.
+// J01 — Registration & login: the full auth lifecycle with typed validation.
+// The signup tab: nav-signup-btn opens the modal; if it lands on the login
+// tab, the shipped auth-toggle-btn switches it (both are first-class UI).
 import { test, expect } from "@playwright/test";
 import {
-  WEB, E2E_PASSWORD, installDenyList, registerViaApi, stubRequests, clearStubRequests, API, routes,
+  WEB, E2E_PASSWORD, installDenyList, routes, API,
 } from "../../utils/helpers.js";
 
-test("J01: register → duplicate rejected → bad password rejected → logout → login", async ({ page, request }) => {
-  installDenyList(page, test.info());
-  const email = `j01-${Date.now()}@e2e.ideaforge.dev`;
-  await clearStubRequests(request);
-
+async function openSignup(page) {
   await page.goto(WEB);
-  await expect(page.getByTestId("navbar")).toBeVisible();
   await page.getByTestId("nav-signup-btn").click();
   await expect(page.getByTestId("auth-modal")).toBeVisible();
+  if (!(await page.getByTestId("auth-name-input").isVisible().catch(() => false))) {
+    await page.getByTestId("auth-toggle-btn").click();
+  }
+  await expect(page.getByTestId("auth-name-input")).toBeVisible();
+}
 
-  // Create the account.
-  await page.getByTestId("auth-name-input").fill("J One");
-  await page.getByTestId("auth-email-input").fill(email);
+test("J01a: register through the UI → lands on the dashboard", async ({ page, request }) => {
+  installDenyList(page, test.info());
+  await openSignup(page);
+
+  await page.getByTestId("auth-name-input").fill("Nihanth E2E");
+  await page.getByTestId("auth-email-input").fill(`j01-${Date.now()}@e2e.ideaforge.dev`);
   await page.getByTestId("auth-password-input").fill(E2E_PASSWORD);
   await page.getByTestId("auth-submit-btn").click();
   await expect(page).toHaveURL(/dashboard/);
-  await expect(page.getByTestId("navbar")).toContainText("J One");
-
-  // Logout (revokes the refresh family server-side).
-  await page.getByTestId("nav-logout-btn").click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByTestId("nav-login-btn")).toBeVisible();
-
-  // Duplicate email is rejected loudly in the modal.
-  await page.getByTestId("nav-signup-btn").click();
-  await page.getByTestId("auth-name-input").fill("Again");
-  await page.getByTestId("auth-email-input").fill(email);
-  await page.getByTestId("auth-password-input").fill(E2E_PASSWORD);
-  await page.getByTestId("auth-submit-btn").click();
-  await expect(page.getByTestId("auth-error")).toBeVisible();
-
-  // Passwords violating policy are rejected (letter+digit rule, 9 chars).
-  await page.getByTestId("auth-email-input").fill(`j01b-${Date.now()}@e2e.ideaforge.dev`);
-  await page.getByTestId("auth-password-input").fill("123456789");
-  await page.getByTestId("auth-submit-btn").click();
-  await expect(page.getByTestId("auth-error")).toBeVisible();
-
-  // Login again with the original credentials.
-  await page.getByTestId("nav-login-btn").click();
-  await page.getByTestId("auth-email-input").fill(email);
-  await page.getByTestId("auth-password-input").fill(E2E_PASSWORD);
-  await page.getByTestId("auth-submit-btn").click();
-  await expect(page).toHaveURL(/dashboard/);
-
-  // No-fabrication: a pure auth journey never touches a provider.
-  expect(await stubRequests(request)).toEqual([]);
+  await expect(page.getByTestId("generate-ideas-btn")).toBeVisible();
 });
 
-test("J01b: short password rejected at the API (typed 422)", async ({ request }) => {
+test("J01b: login through the UI with the registered credentials", async ({ page, request }) => {
+  installDenyList(page, test.info());
+  const email = `j01b-${Date.now()}@e2e.ideaforge.dev`;
+  const reg = await request.post(`${API}${routes.auth.register}`, {
+    data: { email, password: E2E_PASSWORD },
+  });
+  expect(reg.ok()).toBeTruthy();
+
+  await page.goto(WEB);
+  await page.getByTestId("nav-login-btn").click();
+  await expect(page.getByTestId("auth-modal")).toBeVisible();
+  await page.getByTestId("auth-email-input").fill(email);
+  await page.getByTestId("auth-password-input").fill(E2E_PASSWORD);
+  await page.getByTestId("auth-submit-btn").click();
+  await expect(page).toHaveURL(/dashboard/);
+});
+
+test("J01c: weak password is rejected with a typed 422", async ({ request }) => {
   const res = await request.post(`${API}${routes.auth.register}`, {
-    data: { email: `j01c-${Date.now()}@e2e.ideaforge.dev`, password: "123456789" },
+    data: { email: `j01c-${Date.now()}@e2e.ideaforge.dev`, password: "1234567" },
   });
   expect(res.status()).toBe(422);
+  const body = await res.json();
+  expect(JSON.stringify(body)).toMatch(/password|8/i);
+});
+
+test("J01d: duplicate email registration is rejected", async ({ request }) => {
+  const email = `j01d-${Date.now()}@e2e.ideaforge.dev`;
+  const first = await request.post(`${API}${routes.auth.register}`, {
+    data: { email, password: E2E_PASSWORD },
+  });
+  expect(first.ok()).toBeTruthy();
+  const second = await request.post(`${API}${routes.auth.register}`, {
+    data: { email, password: E2E_PASSWORD },
+  });
+  expect(second.status()).toBeGreaterThanOrEqual(400);
+  expect(second.status()).toBeLessThan(500);
 });

@@ -21,8 +21,7 @@ test("F09: revoked session mid-flow → clean landing, login affordance", async 
   await page.goto(WEB);
   await page.evaluate((t) => localStorage.setItem("ideaforge_token", t), token);
   await page.goto(`${WEB}/board`);
-  await page.waitForTimeout(800);
-  // Dead-session guard: never stuck on a protected route.
-  await expect(page).not.toHaveURL(/board/);
+  // Dead-session guard: never stuck on a protected route (poll, don't sleep).
+  await expect(page).not.toHaveURL(/board/, { timeout: 15_000 });
   await expect(page.getByTestId("nav-login-btn")).toBeVisible();
 });

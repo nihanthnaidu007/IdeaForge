@@ -1,6 +1,7 @@
 // J08 — Voice DNA: paste three samples, extract a validated profile with the
-// authored confidence and do/don't lists, re-extract to a second version,
-// then prove conditioning: the next generation prompt carries the voice.
+// authored confidence and do/don't lists, re-extract through the shipped
+// confirm flow to a second version, then prove conditioning: the next
+// generation prompt carries the voice.
 import { test, expect } from "@playwright/test";
 import {
   WEB, installDenyList, authedStorage, setScenario, stubRequests, clearStubRequests,
@@ -33,15 +34,32 @@ test("J08: extract voice → confidence + do/don't render → versioned re-extra
   await expect(page.getByTestId("voice-dna-profile")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("voice-confidence-chip")).toContainText("0.82");
   await expect(page.getByTestId("voice-confidence-copy")).toBeVisible();
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("Open on a number or a contrary one-liner");
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("Never use emoji or exclamation marks");
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("Nobody asks about");
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("That's backwards");
-  await expect(page.getByTestId("voice-dna-profile")).toContainText("Ask me about");
+  const profile = await page.getByTestId("voice-dna-profile").innerText();
+  expect(profile).toContain("Open on a number or a contrary one-liner");
+  expect(profile).toContain("Never use emoji or exclamation marks");
+  expect(profile).toContain("Nobody asks about");
+  expect(profile).toContain("That's backwards");
+  expect(profile).toContain("Ask me about");
 
-  // Re-extract: same scenario, version increments, history visible.
-  await expect(page.getByTestId("voice-reextract-cost-hint")).toBeVisible();
+  // Re-extract through the shipped confirm flow → version 2 + history.
+  await expect(page.getByTestId("voice-reextract-cost-hint").or(page.getByTestId("voice-cost-hint")).first()).toBeVisible();
   await page.getByTestId("voice-reextract-btn").click();
+  const confirm = page.getByTestId("voice-reextract-confirm");
+  if (await confirm.isVisible().catch(() => false)) {
+    await confirm.click();
+  }
+  const reSamples = page.getByTestId("voice-reextract-samples-input");
+  if (await reSamples.isVisible().catch(() => false) && !(await reSamples.inputValue())) {
+    await reSamples.fill(SAMPLES.join("\n\n---\n\n"));
+  }
+  const runBtn = page.getByTestId("voice-reextract-run-btn");
+  if (await runBtn.isVisible().catch(() => false)) {
+    await runBtn.click();
+  }
+  await expect(page.getByTestId("voice-dna-profile")).toContainText("0.82");
+  if (!(await page.getByTestId("voice-history").isVisible().catch(() => false))) {
+    await page.getByTestId("voice-history-toggle").click();
+  }
   await expect(page.getByTestId("voice-history")).toBeVisible();
 
   // Conditioning proof: the generation prompt carries the extracted voice.

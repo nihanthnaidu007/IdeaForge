@@ -18,9 +18,9 @@ export const backendEnv = {
   TAVILY_API_KEY: "tvly-e2e-sentinel",
   ANTHROPIC_API_KEY: "sk-ant-e2e-sentinel",
   OPENAI_API_KEY: "sk-e2e-openai-sentinel",
-  TAVILY_BASE_URL: STUB,
+  TAVILY_BASE_URL: `${STUB}/tavily/search`,  // research.py POSTs to this URL verbatim
   ANTHROPIC_BASE_URL: STUB,
-  OPENAI_BASE_URL: STUB,
+  OPENAI_BASE_URL: `${STUB}/v1`,  // openai SDK appends /chat/completions to the base
   REMINDER_INTERVAL_SECONDS: "1",
   RATE_LIMIT_AUTH_PER_MINUTE: "1000",
   CORS_ORIGINS: "http://127.0.0.1:4173,http://localhost:4173",
