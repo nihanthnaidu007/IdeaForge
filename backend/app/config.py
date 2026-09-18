@@ -53,9 +53,19 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     tavily_api_key: str | None = None
+    # Operator override for the Tavily search endpoint (self-hosted proxies,
+    # local dogfooding). None uses the real Tavily API.
+    tavily_base_url: str | None = None
 
     openai_model: str = "gpt-5.2"
     anthropic_model: str = "claude-sonnet-4-5"
+
+    # Operator-configured USD price table for cost hints (AI craft pack §6:
+    # estimates come from the user's own provider pricing, never a hardcoded
+    # number). JSON object mapping model name to per-1K-token USD prices, e.g.
+    # PROVIDER_PRICE_TABLE='{"gpt-5.2": {"input_per_1k": 0.005, "output_per_1k": 0.015}}'.
+    # A model absent from the table renders the honest unpriced fallback.
+    provider_price_table: str = Field(default="", validation_alias="PROVIDER_PRICE_TABLE")
 
     redis_url: str | None = None  # set: rate limits share state across workers
     smtp_url: str | None = None  # set: email reminders enabled

@@ -109,7 +109,7 @@ const Settings = () => {
   const savePreferences = async () => {
     setLoading(true);
     try {
-      await api.post("/preferences", {
+      await api.put("/preferences", {
         default_tone: preferences.default_tone,
         default_niche: preferences.default_niche,
       });
@@ -135,7 +135,7 @@ const Settings = () => {
 
     setSavingKey(keyType);
     try {
-      await api.post("/preferences", { [fieldMap[keyType]]: apiKeys[keyType] });
+      await api.put("/preferences", { [fieldMap[keyType]]: apiKeys[keyType] });
 
       setKeyStatus((prev) => ({
         ...prev,
@@ -165,7 +165,7 @@ const Settings = () => {
 
     setSavingKey(keyType);
     try {
-      await api.post("/preferences", { [fieldMap[keyType]]: "" });
+      await api.put("/preferences", { [fieldMap[keyType]]: "" });
 
       setKeyStatus((prev) => ({
         ...prev,

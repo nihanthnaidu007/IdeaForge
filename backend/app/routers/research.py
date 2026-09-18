@@ -34,7 +34,9 @@ async def research_trends(
     tavily_key = await resolve_user_key(
         db, vault, current_user["user_id"], "tavily", settings
     )
-    service = TavilyResearchService(str(tavily_key), http_client=http_client)
+    service = TavilyResearchService(
+        str(tavily_key), http_client=http_client, base_url=settings.tavily_base_url
+    )
     raw_trends = await service.search(data.niche)
     # Honest analytics: one event per real research run. Never written on
     # failure — a failed search produces no usage row, so counts stay true.

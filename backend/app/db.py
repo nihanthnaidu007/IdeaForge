@@ -55,6 +55,15 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_key_audit_user_at",
         ),
     ],
+    # Variant sets: per-user compare sets, newest first; sets link to their
+    # parent via parent_set_id for regeneration round tracking.
+    "variant_sets": [
+        IndexModel(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="ix_variant_sets_user_created",
+        ),
+        IndexModel([("id", ASCENDING)], name="uq_variant_sets_id", unique=True),
+    ],
     "usage_events": [
         # Analytics reads a user's events newest-first; every write appends.
         IndexModel(

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import Navbar from "@/components/layout/Navbar";
 import SkipLink from "@/components/layout/SkipLink";
@@ -136,13 +136,23 @@ const Dashboard = () => {
   const [staleDismissed, setStaleDismissed] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [insights, setInsights] = useState({});
+  const [insightHint, setInsightHint] = useState(null);
   const [selectedIdea, setSelectedIdea] = useState(null);
   const [selectedFormat, setSelectedFormat] = useState(null);
   const [customInstructions, setCustomInstructions] = useState("");
+  const [variantHint, setVariantHint] = useState(null);
+  const [variantSet, setVariantSet] = useState(null);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantsError, setVariantsError] = useState(null);
+  const [tweakingIndex, setTweakingIndex] = useState(null);
+  const [pickedIndex, setPickedIndex] = useState(null);
   const [generatedPost, setGeneratedPost] = useState("");
   const [postLoading, setPostLoading] = useState(false);
   const [tweakMode, setTweakMode] = useState(false);
   const [tweakInstruction, setTweakInstruction] = useState("");
+  // The research that produced the current ideas: variants and insight cards
+  // carry it forward so generation stays grounded in the same evidence.
+  const lastResearchRef = useRef({ trends: [], researched_at: null });
 
   const generateIdeas = async () => {
     setLoading(true);
@@ -153,6 +163,9 @@ const Dashboard = () => {
     setSelectedIdea(null);
     setSelectedFormat(null);
     setGeneratedPost("");
+    setPickedIndex(null);
+    setVariantSet(null);
+    setVariantsError(null);
     setInsights({});
 
     // §3.2 loading: name the machine — this runs a real search on the key —
@@ -163,6 +176,12 @@ const Dashboard = () => {
     try {
       // Step 1: live trend research (Tavily)
       const research = await api.post("/research", { niche, tone: tone.toLowerCase() });
+      // Kept for downstream variant + insight-card generation: the same
+      // evidence grounds every later call on this dashboard run.
+      lastResearchRef.current = {
+        trends: Array.isArray(research.raw_trends) ? research.raw_trends : [],
+        researched_at: research.researched_at ?? new Date().toISOString(),
+      };
       setScanningText("Forging ideas from your research…");
       setScanningSub("");
       // Step 2: scored idea generation
@@ -194,53 +213,148 @@ const Dashboard = () => {
     }
   };
 
-  const loadInsights = async (idea, index) => {
+  const generateInsights = async (idea, index) => {
+    // Explicit user action (§6 BYOK rule): the card costs the user's own
+    // credits, so it never fires on expansion alone.
     setInsights((prev) => ({ ...prev, [index]: { status: "loading" } }));
     try {
+      const refresh = insights[index]?.status === "done";
       const data = await api.post("/idea-insights", {
         idea,
         niche,
         tone: tone.toLowerCase(),
+        trends: lastResearchRef.current.trends,
+        researched_at: lastResearchRef.current.researched_at,
+        refresh,
       });
-      setInsights((prev) => ({ ...prev, [index]: { status: "done", data } }));
+      setInsights((prev) => ({
+        ...prev,
+        [index]: { status: "done", data: data.insights ?? data, cost_hint: data.cost_hint ?? null },
+      }));
     } catch (error) {
       // Retryable inline; nothing fabricated is rendered on failure.
       setInsights((prev) => ({ ...prev, [index]: { status: "error", error } }));
     }
   };
 
-  const toggleExpand = async (index) => {
-    if (expandedId === index) {
-      setExpandedId(null);
-    } else {
-      setExpandedId(index);
-      await loadInsights(ideas[index], index);
-    }
+  const toggleExpand = (index) => {
+    setExpandedId(expandedId === index ? null : index);
   };
 
   const selectIdea = (idea, index) => {
     setSelectedIdea({ ...idea, index });
     setSelectedFormat(null);
     setGeneratedPost("");
+    setPickedIndex(null);
+    setVariantSet(null);
+    setVariantsError(null);
   };
 
-  const generatePost = async (endpoint, successMessage) => {
-    setPostLoading(true);
+  // Craft three named variants off the idea's insight card + the user's
+  // Voice DNA. The response carries the cost hint for the NEXT call and a
+  // variant_set whose columns render side by side.
+  const generateVariants = async () => {
+    if (!selectedIdea || !selectedFormat) return;
+    setVariantsLoading(true);
+    setVariantsError(null);
     try {
-      const data = await api.post(endpoint, {
+      const data = await api.post("/generate-variants", {
         idea: selectedIdea,
         format: selectedFormat,
         tone: tone.toLowerCase(),
         custom_instructions: customInstructions,
         insights: insights[selectedIdea.index]?.data || null,
+        trends: lastResearchRef.current.trends,
+        researched_at: lastResearchRef.current.researched_at,
       });
-      setGeneratedPost(data.post);
-      toast.success(successMessage);
+      setVariantSet(data.variant_set);
+      setVariantHint(data.cost_hint?.hint ?? null);
+      setGeneratedPost("");
+      setPickedIndex(null);
+      toast.success("Three variants ready");
     } catch (error) {
-      // Surface the honest message (missing-key guidance, quota, etc.).
+      // Typed provider errors (missing key / quota / refusal) surface with
+      // their honest message — no substitute content, no silent fallback.
+      setVariantsError(error);
       toast.error(error.message);
     } finally {
-      setPostLoading(false);
+      setVariantsLoading(false);
+    }
+  };
+
+  // Regenerate re-sends the SAME idea but the backend rotates the brief
+  // assignments — new strategic instructions every round, never a re-run
+  // of identical prompts (the audited §1.3 route-9 defect).
+  const regenerateVariants = async () => {
+    if (!selectedIdea || !selectedFormat || !variantSet) return;
+    setVariantsLoading(true);
+    setVariantsError(null);
+    try {
+      const data = await api.post("/regenerate-post", {
+        idea: selectedIdea,
+        format: selectedFormat,
+        tone: tone.toLowerCase(),
+        custom_instructions: customInstructions,
+        insights: insights[selectedIdea.index]?.data || null,
+        parent_set_id: variantSet.id,
+        trends: lastResearchRef.current.trends,
+        researched_at: lastResearchRef.current.researched_at,
+      });
+      setVariantSet(data.variant_set);
+      setVariantHint(data.cost_hint?.hint ?? null);
+      setGeneratedPost("");
+      setPickedIndex(null);
+      toast.success("Fresh variants drafted");
+    } catch (error) {
+      setVariantsError(error);
+      toast.error(error.message);
+    } finally {
+      setVariantsLoading(false);
+    }
+  };
+
+  const pickVariant = (index) => {
+    const variant = variantSet?.variants?.[index];
+    if (!variant || variant.status !== "ready") return;
+    setGeneratedPost(variant.post_text);
+    setPickedIndex(index);
+    setTweakMode(false);
+    setTweakInstruction("");
+  };
+
+  const copyVariant = (index) => {
+    const variant = variantSet?.variants?.[index];
+    if (!variant || variant.status !== "ready") return;
+    navigator.clipboard.writeText(variant.post_text);
+    toast.success(`Variant ${["A", "B", "C"][index] ?? index + 1} copied to clipboard`);
+  };
+
+  // Tweak by instruction: versioned on the backend (the prior draft lands
+  // in the variant's versions trail — never silently overwritten). The
+  // response carries the updated variant only; it merges into the local set.
+  const tweakVariant = async (index, instruction) => {
+    if (!variantSet || !instruction) return;
+    setTweakingIndex(index);
+    try {
+      const data = await api.post("/tweak-variant", {
+        set_id: variantSet.id,
+        variant_index: index,
+        instruction,
+      });
+      const updated = data.variant;
+      setVariantSet((prev) => ({
+        ...prev,
+        variants: prev.variants.map((v, i) => (i === index ? updated : v)),
+      }));
+      setVariantHint(data.cost_hint?.hint ?? null);
+      if (pickedIndex === index) {
+        setGeneratedPost(updated.post_text);
+      }
+      toast.success(`Variant ${["A", "B", "C"][index] ?? index + 1} tweaked`);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setTweakingIndex(null);
     }
   };
 
@@ -270,6 +384,46 @@ const Dashboard = () => {
     toast.success("Copied to clipboard");
   };
 
+  // Cost hints (§6 BYOK rule): one batched estimate for insight cards when a
+  // fresh idea set lands, and a per-format estimate for variant generation
+  // when a format is picked — both fetched BEFORE any spend happens.
+  useEffect(() => {
+    let cancelled = false;
+    if (ideas.length === 0) return;
+    api
+      .get("/cost-estimate?action=insight_card_first")
+      .then((hint) => {
+        if (!cancelled) setInsightHint(hint.hint);
+      })
+      .catch(() => {
+        // Estimation is advisory; its failure never blocks generation.
+        if (!cancelled) setInsightHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ideas]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setVariantHint(null);
+    if (!selectedFormat || variantSet) return;
+    api
+      .get(
+        `/cost-estimate?action=generate_variant&format=${encodeURIComponent(selectedFormat)}`,
+      )
+      .then((hint) => {
+        if (!cancelled) setVariantHint(hint.hint);
+      })
+      .catch(() => {
+        // Estimation is advisory; its failure never blocks generation.
+        if (!cancelled) setVariantHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFormat, variantSet]);
+
   const saveIdea = async (idea, index, withPost = false) => {
     const ideaInsights = insights[index]?.data || {};
     try {
@@ -277,9 +431,11 @@ const Dashboard = () => {
         topic_title: idea.title,
         rating: idea.rating,
         rating_explanation: idea.rating_explanation,
-        targeted_audience: ideaInsights.targeted_audience,
-        why_it_matters: ideaInsights.why_it_matters,
-        key_aspects: ideaInsights.key_aspects,
+        targeted_audience: ideaInsights.audience?.primary ?? null,
+        why_it_matters: ideaInsights.why_it_matters ?? null,
+        key_aspects: ideaInsights.key_aspects ?? null,
+        post_angles: ideaInsights.post_angles ?? null,
+        evidence_gaps: ideaInsights.evidence_gaps ?? null,
         generated_post: withPost ? generatedPost : null,
         post_format: withPost ? selectedFormat : null,
         niche,
@@ -350,9 +506,10 @@ const Dashboard = () => {
                   expanded={expandedId === index}
                   onToggle={() => toggleExpand(index)}
                   insights={insights[index]}
+                  insightsCostHint={insightHint}
+                  onGenerateInsights={() => generateInsights(idea, index)}
                   onExplore={() => selectIdea(idea, index)}
                   onSave={() => saveIdea(idea, index)}
-                  onRetryInsights={() => loadInsights(idea, index)}
                 />
               ))}
             </div>
@@ -383,19 +540,31 @@ const Dashboard = () => {
             <FormatPicker onSelect={setSelectedFormat} />
           )}
 
-          {/* Custom Instructions */}
-          {selectedFormat && !generatedPost && (
+          {/* Variant Compare: stays up after picking so the picked note and
+              the version trail remain visible next to the preview */}
+          {selectedFormat && pickedIndex == null && (
             <VariantCompare
               selectedFormat={selectedFormat}
               instructions={customInstructions}
               onInstructionsChange={setCustomInstructions}
-              onCraft={() => generatePost("/generate-post", "Post generated")}
-              crafting={postLoading}
+              onCraft={generateVariants}
+              crafting={variantsLoading}
+              costHint={variantHint}
+              variantSet={variantSet}
+              variantsLoading={variantsLoading}
+              variantsError={variantsError}
+              onRegenerate={regenerateVariants}
+              onPickVariant={pickVariant}
+              onCopyVariant={copyVariant}
+              onTweakVariant={tweakVariant}
+              tweakingIndex={tweakingIndex}
+              pickedIndex={pickedIndex}
+              pickedBriefName={variantSet?.variants?.[pickedIndex]?.brief_name}
             />
           )}
 
-          {/* Generated Post */}
-          {generatedPost && (
+          {/* Generated Post — the picked variant, refined via /tweak-post */}
+          {pickedIndex != null && generatedPost && (
             <PostPreview
               post={generatedPost}
               formatLabel={selectedFormat}
@@ -411,7 +580,7 @@ const Dashboard = () => {
                 setTweakInstruction("");
               }}
               onCopy={copyPost}
-              onRegenerate={() => generatePost("/regenerate-post", "Post regenerated")}
+              onRegenerate={regenerateVariants}
               onSave={() => saveIdea(selectedIdea, selectedIdea.index, true)}
             />
           )}

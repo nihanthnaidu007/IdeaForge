@@ -39,15 +39,19 @@ class TavilyResearchService:
         self,
         api_key: str,
         *,
+        base_url: str | None = None,
         http_client: httpx.AsyncClient | None = None,
         timeout_seconds: float = 15.0,
         max_results_per_query: int = 3,
     ) -> None:
         # A shared app-lifetime client (connection pooling) is injected in prod;
         # the per-instance default keeps the service usable standalone/in tests.
+        # base_url is operator-configurable (TAVILY_BASE_URL) for self-hosted
+        # proxies and local dogfooding; production defaults to the real API.
         self._client = http_client or httpx.AsyncClient(timeout=timeout_seconds)
         self._owns_client = http_client is None
         self._api_key = api_key
+        self._base_url = base_url or _SEARCH_URL
         self._max_results = max_results_per_query
 
     async def aclose(self) -> None:
@@ -92,7 +96,7 @@ class TavilyResearchService:
     async def _search_one(self, query: str) -> list[dict[str, Any]]:
         try:
             response = await self._client.post(
-                _SEARCH_URL,
+                self._base_url,
                 json={
                     "query": query,
                     "max_results": self._max_results,

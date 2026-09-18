@@ -82,6 +82,31 @@ class GenerationError(ProviderError):
     kind = "GENERATION_FAILED"
 
 
+class GenerationRefusedError(GenerationError):
+    """The model declined per the fail-loud rules (craft pack §4.4).
+
+    A refusal is the model telling the truth about its inputs — it is a valid,
+    correct response, never retried silently and never replaced with canned
+    content. Surfaced as its own kind so the UI can render the per-variant
+    "needs sources" state while sibling variants stand.
+    """
+
+    status_code = 502
+    kind = "GENERATION_REFUSED"
+
+
+class InsufficientEvidenceError(GenerationError):
+    """Insight-card input cannot support the idea (craft pack §5.2).
+
+    Distinct from a malformed response: the model answered correctly that the
+    trend context cannot source this idea. The fix is better research, not a
+    retry — the kind tells the UI to say exactly that.
+    """
+
+    status_code = 502
+    kind = "INSUFFICIENT_EVIDENCE"
+
+
 @dataclass(frozen=True)
 class TokenUsage:
     """Token counts of one completed LLM call, as reported by the provider SDK.
