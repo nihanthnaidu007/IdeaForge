@@ -8,12 +8,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CostHintBanner } from "./VariantCompare";
 import { NICHES, TONES } from "@/lib/constants";
 
 // Trend Radar panel: the live-research trigger. Owns the niche/tone controls
 // (moved out of the old dashboard navbar so this is the single source of
-// truth for them) and the scanning feedback while research runs.
-const TrendRadar = ({ niche, onNicheChange, tone, onToneChange, loading, scanningText, scanningSub, onGenerate }) => (
+// truth for them) and the scanning feedback while research runs. The cost
+// hint renders directly above the run button (UI pack §cost-hint placement
+// law) — the estimate is on screen before the first spend can fire.
+const TrendRadar = ({ niche, onNicheChange, tone, onToneChange, loading, scanningText, scanningSub, costHint, onGenerate }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
@@ -61,6 +64,8 @@ const TrendRadar = ({ niche, onNicheChange, tone, onToneChange, loading, scannin
         </Select>
       </div>
     </div>
+
+    <CostHintBanner hint={costHint} testId="research-cost-hint" />
 
     <Button
       onClick={onGenerate}

@@ -227,3 +227,66 @@ describe("componentization", () => {
     }
   });
 });
+
+describe("first-spend cost hint (§6 cost law)", () => {
+  // The corrected backend string (COST_HINTS["research"], served by
+  // /cost-estimate?action=research) — the frontend renders it verbatim.
+  const RESEARCH_HINT =
+    "Heads up: this runs research and idea generation together — a live web search plus a few model calls at your configured model rates, about $0.02.";
+
+  it("renders the research estimate before the run button can fire", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const origGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url === "/auth/me") return authMe();
+      if (url === "/cost-estimate?action=research")
+        return Promise.resolve({ action: "research", hint: RESEARCH_HINT, estimated_usd: 0.02 });
+      return Promise.resolve({});
+    });
+
+    try {
+      const user = userEvent.setup();
+      renderRoute("/dashboard");
+
+      // The estimate is on screen before any spend — no research has run.
+      const hint = await screen.findByTestId("research-cost-hint");
+      expect(hint).toHaveTextContent(/research and idea generation/i);
+      expect(hint).toHaveTextContent(/a few model calls/i);
+      expect(hint).toHaveTextContent(/about \$0\.02/);
+      // No phantom affordance: the corrected string never promises re-use.
+      expect(hint).not.toHaveTextContent(/re-use/i);
+      expect(api.post).not.toHaveBeenCalled();
+
+      // The run fires with the hint in place — and the hint stays visible.
+      api.post.mockResolvedValueOnce({ raw_trends: [], ideas: [] });
+      await user.click(screen.getByTestId("generate-ideas-btn"));
+      await waitFor(() =>
+        expect(api.post.mock.calls.filter(([url]) => url === "/research")).toHaveLength(1)
+      );
+      expect(screen.getByTestId("research-cost-hint")).toBeInTheDocument();
+    } finally {
+      api.get.mockImplementation(origGet);
+    }
+  });
+
+  it("renders no hint rather than an invented one when estimation fails", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const origGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url === "/auth/me") return authMe();
+      if (url === "/cost-estimate?action=research")
+        return Promise.reject(new Error("estimation down"));
+      return Promise.resolve({});
+    });
+
+    try {
+      renderRoute("/dashboard");
+      await screen.findByTestId("generate-ideas-btn");
+      // Advisory estimation: no fabricated number, and the run stays possible.
+      expect(screen.queryByTestId("research-cost-hint")).not.toBeInTheDocument();
+      expect(screen.getByTestId("generate-ideas-btn")).toBeEnabled();
+    } finally {
+      api.get.mockImplementation(origGet);
+    }
+  });
+});
