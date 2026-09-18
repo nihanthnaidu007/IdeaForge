@@ -57,6 +57,18 @@ class Settings(BaseSettings):
     # local dogfooding). None uses the real Tavily API.
     tavily_base_url: str | None = None
 
+    # Bundled-key daily allowances (hybrid AI-payment model, Wave 1 spec).
+    # Caps bound the operator's spend on server-default keys only — a user's
+    # own BYOK key is never capped and never counted (locked invariant).
+    # Reversible labeled assumption: 25 LLM calls / 10 research runs per user
+    # per day; operators tune via env, nothing depends on these numbers.
+    bundled_daily_llm_limit: int = Field(
+        default=25, validation_alias="BUNDLED_DAILY_LLM_LIMIT"
+    )
+    bundled_daily_research_limit: int = Field(
+        default=10, validation_alias="BUNDLED_DAILY_RESEARCH_LIMIT"
+    )
+
     # Same override for the LLM SDK clients (self-hosted proxies, E2E mock
     # boundary). None uses the real public APIs — defaults preserve behavior.
     anthropic_base_url: str | None = None

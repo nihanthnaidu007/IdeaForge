@@ -83,6 +83,22 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_usage_user_at",
         ),
     ],
+    "usage_counters": [
+        # Cap enforcement counters (Wave 1): one doc per user×resource×UTC
+        # day. Unique so concurrent first-authorizations upsert into one doc;
+        # TTL purges each doc 45 days after its allowance reset — bookkeeping,
+        # not analytics history.
+        IndexModel(
+            [("user_id", ASCENDING), ("resource", ASCENDING), ("day", ASCENDING)],
+            name="uq_usage_counters_user_resource_day",
+            unique=True,
+        ),
+        IndexModel(
+            [("resets_at", ASCENDING)],
+            name="ttl_usage_counters_resets_at",
+            expireAfterSeconds=45 * 24 * 60 * 60,
+        ),
+    ],
     # In-app reminders (draft queue) list newest-first per user.
     "notifications": [
         IndexModel(

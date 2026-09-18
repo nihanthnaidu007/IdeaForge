@@ -21,8 +21,10 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+from pymongo import ReturnDocument
 
 from app.logging_setup import get_request_id
 
@@ -49,6 +51,113 @@ REMINDER_FIRED = "reminder_fired"
 
 # Upper bound on optional context fields — analytic metadata, not user copy.
 _MAX_CONTEXT_LEN = 200
+
+
+# --- Bundled-key daily usage counters (Wave 1 hybrid-model caps) -------------
+#
+# Separate from the event log above: these are enforcement counters, one doc
+# per (user, resource, UTC day), incremented atomically at the moment a
+# bundled (server-default) call is authorized. BYOK calls never touch them —
+# the cap bounds the operator's spend, it never nudges users off the product.
+
+RESOURCE_LLM = "llm"
+RESOURCE_RESEARCH = "research"
+
+# Research runs execute on Tavily; every model call is an LLM resource. The
+# 1:1 provider→resource mapping is a property of the product, not a config
+# knob — caps are per resource so one dashboard action cannot exhaust both.
+_RESOURCE_FOR_PROVIDER: dict[str, str] = {
+    "tavily": RESOURCE_RESEARCH,
+    "anthropic": RESOURCE_LLM,
+    "openai": RESOURCE_LLM,
+}
+
+
+def resource_for_provider(provider: str) -> str:
+    """Map a provider to its cap resource (research runs vs LLM calls)."""
+    return _RESOURCE_FOR_PROVIDER[provider]
+
+
+def bundled_daily_limit(settings: Any, resource: str) -> int:
+    """Operator-configured daily allowance for a resource (env-tunable)."""
+    if resource == RESOURCE_RESEARCH:
+        return settings.bundled_daily_research_limit
+    return settings.bundled_daily_llm_limit
+
+
+def daily_usage_reset_at(now: datetime | None = None) -> datetime:
+    """When today's counters reset: next UTC midnight (deterministic)."""
+    now = now or datetime.now(UTC)
+    return datetime(now.year, now.month, now.day, tzinfo=UTC) + timedelta(days=1)
+
+
+def seconds_until_reset(now: datetime | None = None) -> int:
+    reset = daily_usage_reset_at(now)
+    now = now or datetime.now(UTC)
+    return max(0, int((reset - now).total_seconds()))
+
+
+def _counter_identity(user_id: str, resource: str, now: datetime) -> dict[str, Any]:
+    return {
+        "user_id": user_id,
+        "resource": resource,
+        "day": now.strftime("%Y-%m-%d"),
+    }
+
+
+async def read_daily_usage(
+    db: Any, user_id: str, resource: str, *, now: datetime | None = None
+) -> int:
+    """Current count for (user, resource, today) — the Settings banner read."""
+    now = now or datetime.now(UTC)
+    doc = await db.usage_counters.find_one(
+        _counter_identity(user_id, resource, now), {"_id": 0, "count": 1}
+    )
+    return int(doc["count"]) if doc else 0
+
+
+async def authorize_daily_usage(
+    db: Any,
+    user_id: str,
+    resource: str,
+    *,
+    limit: int,
+    now: datetime | None = None,
+) -> int | None:
+    """Atomically reserve one bundled unit; None when today's allowance is spent.
+
+    The increment is an atomic ``$inc`` on the daily-keyed doc; the returned
+    count doubles as the caller's reservation ticket — a caller that draws a
+    ticket above ``limit`` was denied and refunds its own increment. Concurrent
+    callers therefore draw distinct tickets and at most ``limit`` of them can
+    proceed; at rest the counter equals the number of authorized units.
+    ``$setOnInsert`` carries the identity fields explicitly because upsert
+    document creation from filter equalities is MongoDB-specific — stating
+    them keeps the repo fakes and real Mongo identical (the unique index on
+    user×resource×day collapses any first-insert race). Callers raise
+    UsageCapExceeded on None; an authorized unit is never refunded (a failed
+    provider call is still a spend attempt — documented, honest).
+    """
+    now = now or datetime.now(UTC)
+    identity = _counter_identity(user_id, resource, now)
+    doc = await db.usage_counters.find_one_and_update(
+        identity,
+        {
+            "$inc": {"count": 1},
+            "$setOnInsert": {**identity, "resets_at": daily_usage_reset_at(now)},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    if not doc:
+        # find_one_and_update(upsert) always returns a doc in practice; a
+        # missing one is a fake/driver contract break, not a denial.
+        raise RuntimeError("usage counter upsert returned no document")
+    count = int(doc["count"])
+    if count > limit:
+        await db.usage_counters.update_one(identity, {"$inc": {"count": -1}})
+        return None
+    return count
 
 
 def build_usage_event(
