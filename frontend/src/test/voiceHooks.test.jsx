@@ -413,6 +413,11 @@ describe("HookPicker", () => {
     await userEvent.click(screen.getByTestId("hook-mine-chip"));
     const mineEmpty = await screen.findByTestId("hooks-empty-mine");
     expect(mineEmpty).toHaveTextContent("You haven't saved any hooks yet.");
+    // The body names only actions that exist: Save a copy lives on built-in
+    // rows, Edit and Delete live on user rows once the copy lands.
+    expect(mineEmpty).toHaveTextContent(
+      'Use "Save a copy" on any built-in pattern — your copy lands here, where Edit and Delete work on it.',
+    );
     await userEvent.click(screen.getByTestId("hooks-browse-builtins-btn"));
     await screen.findByTestId("hook-row-H01");
   });

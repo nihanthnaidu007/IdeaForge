@@ -567,8 +567,8 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
                   You haven't saved any hooks yet.
                 </p>
                 <p className="text-zinc-400 text-sm mb-3">
-                  Duplicate any built-in pattern with your own tweak and save it — your version
-                  keeps the same style and format tags.
+                  Use &quot;Save a copy&quot; on any built-in pattern — your copy lands here,
+                  where Edit and Delete work on it.
                 </p>
                 <Button
                   onClick={() => setMineOnly(false)}
