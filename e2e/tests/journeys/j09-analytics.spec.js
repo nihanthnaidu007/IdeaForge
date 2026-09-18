@@ -51,12 +51,23 @@ test("J09: empty state → validated manual entry → summary + honest compariso
   await numbers.nth(2).fill("12");
   await numbers.nth(3).fill("3");
 
-  // Non-numeric input → the typed field error, no submit.
+  // Non-numeric input → the typed field error at change time; the controlled
+  // field keeps its last valid value, so garbage never enters the app state.
   await numbers.nth(0).fill("abc");
-  await page.getByTestId("metrics-submit-btn").click();
   await expect(page.getByTestId("metrics-field-error")).toBeVisible();
 
+  // Correcting the field clears the error. The correction must be a DIFFERENT
+  // value: the controlled field reverted to "1200" when the garbage was
+  // rejected, and a same-value fill never fires React's onChange (the value
+  // tracker dedupes it), so the error would stay. "1300" clears it; the final
+  // "1200" below is a real change again and is what the submit logs.
+  await numbers.nth(0).fill("1300");
+  await expect(page.getByTestId("metrics-field-error")).toBeHidden();
   await numbers.nth(0).fill("1200");
+
+  // Submit logs the results. A successful log refreshes the summary and the
+  // form remounts with a fresh idea pick (the shipped reset) — one submit
+  // per entry, so this is the spec's only submit click.
   await page.getByTestId("metrics-submit-btn").click();
 
   // The logged numbers render; the comparison is honest about the zero baseline.

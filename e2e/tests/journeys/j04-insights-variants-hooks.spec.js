@@ -30,13 +30,15 @@ test("J04: insights → variants → hook swap with cost hints", async ({ page, 
   // FormatPicker (and format-hot-take-btn) render only after it.
   await page.getByTestId("explore-formats-0-btn").click();
 
-  // The format pick drives the variant generation; three distinct drafts.
+  // The format pick opens VariantCompare; drafting the three variants is the
+  // shipped manual step — the craft button inside the compare panel.
   await page.getByTestId("format-hot-take-btn").click();
-  await expect(page.getByText("Hot take: your RAG demo dies").first()).toBeVisible({ timeout: 30_000 });
-
-  // Pick a variant, craft the post — the hook picker lives in the post flow.
-  await page.getByTestId("variant-pick-0-btn").click();
   await page.getByTestId("craft-post-btn").click();
+  await expect(page.getByTestId("variant-column-0")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("variant-column-0")).toContainText("Hot take: your RAG demo dies");
+
+  // Pick a variant — the post preview renders the picked draft directly.
+  await page.getByTestId("variant-pick-0-btn").click();
   await expect(page.getByTestId("post-content")).toBeVisible({ timeout: 20_000 });
 
   // Hook swap: swap a hook into the draft — the cost hint and the new

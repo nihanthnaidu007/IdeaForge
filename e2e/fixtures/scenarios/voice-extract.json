@@ -1,1 +1,37 @@
-{"tavily": [{"match_query_contains": "site:reddit.com", "serve_fixture": "FIX-TAVILY-Q1"}, {"match_query_contains": "viral news today", "serve_fixture": "FIX-TAVILY-Q2"}, {"match_query_contains": "topics LinkedIn", "serve_fixture": "FIX-TAVILY-Q3"}], "anthropic": [{"sequence": ["FIX-VOICE-01", "FIX-VOICE-01", "FIX-IDEAS-01", "FIX-INSIGHT-01", "FIX-POST-HTA", "FIX-POST-HTB", "FIX-POST-HTC", "FIX-GENERATE-POST-01"]}], "openai": [{"serve_fixture": "FIX-VOICE-01"}]}
+{
+  "tavily": [
+    {
+      "match_query_contains": "site:reddit.com",
+      "serve_fixture": "FIX-TAVILY-Q1"
+    },
+    {
+      "match_query_contains": "viral news today",
+      "serve_fixture": "FIX-TAVILY-Q2"
+    },
+    {
+      "match_query_contains": "topics LinkedIn",
+      "serve_fixture": "FIX-TAVILY-Q3"
+    }
+  ],
+  "anthropic": [
+    {
+      "sequence": [
+        "FIX-IDEAS-01",
+        "FIX-INSIGHT-01"
+      ]
+    }
+  ],
+  "openai": [
+    {
+      "match_body_contains": {
+        "messages": "writing-style analyst"
+      },
+      "serve_fixture": "FIX-VOICE-01"
+    },
+    {
+      "sequence": [
+        "FIX-GENERATE-POST-01"
+      ]
+    }
+  ]
+}

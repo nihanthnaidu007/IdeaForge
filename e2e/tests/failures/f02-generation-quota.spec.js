@@ -42,8 +42,10 @@ test("F02: OpenAI quota error → typed quota failure, ideas untouched, no Emerg
   // Formats (selectIdea) — the FormatPicker renders only after selection.
   await page.getByTestId("idea-card-0").click();
   await page.getByTestId("explore-formats-0-btn").click();
-  // The variants step hits the quota error; VariantCompare surfaces it.
+  // Drafting is the shipped manual step — the craft button fires the variants
+  // call that hits the quota error; VariantCompare surfaces it honestly.
   await page.getByTestId("format-hot-take-btn").click();
+  await page.getByTestId("craft-post-btn").click();
   await expect(page.getByTestId("variants-error")).toBeVisible({ timeout: 20_000 });
   const banner = await page.getByTestId("variants-error").innerText();
   expect(banner).toMatch(/quota|credit|rate/i);

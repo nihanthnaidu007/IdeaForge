@@ -234,6 +234,18 @@ const VariantCompare = ({
 
       {!variantSet ? (
         <div>
+          {/* First-craft failures render the same persistent alert as
+              regeneration failures — a toast alone would leave the panel
+              silent (fail-loud: the user must see what happened). */}
+          {variantsError ? (
+            <div role="alert" data-testid="variants-error" className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
+              <p className="text-red-300 text-sm font-medium">Variant generation failed.</p>
+              <p className="text-zinc-400 text-sm mt-1">{variantsError.message}</p>
+              <p className="text-zinc-500 text-xs mt-2">
+                Nothing was saved or charged beyond what the provider already metered.
+              </p>
+            </div>
+          ) : null}
           <CostHintBanner hint={costHint} />
           <Textarea
             value={instructions}

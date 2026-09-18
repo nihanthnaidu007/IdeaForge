@@ -41,11 +41,16 @@ test("critical path: register → keys → research → forge → variants → s
   // the FormatPicker (and format-hot-take-btn) render only after it.
   await page.getByTestId("explore-formats-0-btn").click();
 
-  // The format pick drives the variant generation (VariantCompare's picker).
+  // The format pick opens VariantCompare; drafting the three variants is the
+  // shipped manual step — the craft button inside the compare panel.
   await page.getByTestId("format-hot-take-btn").click();
-  await expect(page.getByText("Hot take: your RAG demo dies").first()).toBeVisible({ timeout: 30_000 });
-  await page.getByTestId("variant-pick-0-btn").click();
   await page.getByTestId("craft-post-btn").click();
+  await expect(page.getByTestId("variant-column-0")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("variant-column-0")).toContainText("Hot take: your RAG demo dies");
+
+  // Picking a variant renders the picked draft in the post preview directly —
+  // no second craft step exists in the shipped flow.
+  await page.getByTestId("variant-pick-0-btn").click();
   await expect(page.getByTestId("post-content")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("post-content")).toContainText("golden set");
 

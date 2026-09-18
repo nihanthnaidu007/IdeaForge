@@ -1,1 +1,34 @@
-{"tavily": [{"match_query_contains": "site:reddit.com", "serve_fixture": "FIX-TAVILY-Q1"}, {"match_query_contains": "viral news today", "serve_fixture": "FIX-TAVILY-Q2"}, {"match_query_contains": "topics LinkedIn", "serve_fixture": "FIX-TAVILY-Q3"}] , "anthropic": [{"sequence": ["FIX-IDEAS-01", "FIX-INSIGHT-01", "FIX-POST-HTA", "FIX-POST-HTB", "FIX-POST-HTC", "FIX-HOOK-SWAP-H09"]}], "openai": []}
+{
+  "tavily": [
+    {
+      "match_query_contains": "site:reddit.com",
+      "serve_fixture": "FIX-TAVILY-Q1"
+    },
+    {
+      "match_query_contains": "viral news today",
+      "serve_fixture": "FIX-TAVILY-Q2"
+    },
+    {
+      "match_query_contains": "topics LinkedIn",
+      "serve_fixture": "FIX-TAVILY-Q3"
+    }
+  ],
+  "anthropic": [
+    {
+      "sequence": [
+        "FIX-IDEAS-01",
+        "FIX-INSIGHT-01"
+      ]
+    }
+  ],
+  "openai": [
+    {
+      "sequence": [
+        "FIX-POST-HTA",
+        "FIX-POST-HTB",
+        "FIX-POST-HTC",
+        "FIX-HOOK-SWAP-H09"
+      ]
+    }
+  ]
+}
