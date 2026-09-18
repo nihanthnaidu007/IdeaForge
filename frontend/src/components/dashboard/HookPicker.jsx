@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { api } from "@/api/client";
 import { POST_FORMATS } from "@/lib/constants";
-import { Check, HelpCircle, Loader2, Lock, MousePointerClick, RefreshCw } from "lucide-react";
+import { Check, Copy, HelpCircle, Loader2, Lock, MousePointerClick, RefreshCw } from "lucide-react";
 
 // HookPicker, per the UI & Copy Craft Pack §6.2: filter chips by style, a
 // per-row source gate (requires_source hooks unlock only when the idea's
@@ -24,7 +24,7 @@ const formatLabel = (id) => POST_FORMATS.find((f) => f.id === id)?.name ?? id;
 // kebab-case (models/hooks.py maps the two).
 const toApiFormat = (id) => String(id ?? "").replace(/-/g, "_");
 
-const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemove, onSwap }) => {
+const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemove, onSwap, onSaveCopy, copying }) => {
   const [whyOpen, setWhyOpen] = useState(false);
   const requiresOwnData = hook.tags?.includes("requires_own_data");
 
@@ -130,6 +130,28 @@ const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemov
             Use hook
           </Button>
         )}
+        {hook.is_builtin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSaveCopy}
+            disabled={copying}
+            data-testid={`hook-save-copy-${hook.id}`}
+            className="border-white/10 text-white hover:bg-white/5"
+          >
+            {copying ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" aria-hidden="true" />
+                Save a copy
+              </>
+            )}
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -143,15 +165,32 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
   const [styleFilter, setStyleFilter] = useState("all");
   const [mineOnly, setMineOnly] = useState(false);
   const [swappingId, setSwappingId] = useState(null);
+  const [copyingId, setCopyingId] = useState(null);
 
   const apiFormat = toApiFormat(format);
+
+  const fetchHooks = async () => {
+    const data = await api.get(`/hooks?format=${apiFormat}`);
+    setHooks(Array.isArray(data?.hooks) ? data.hooks : []);
+  };
 
   const load = async () => {
     setPhase("loading");
     try {
-      const data = await api.get(`/hooks?format=${apiFormat}`);
-      setHooks(Array.isArray(data?.hooks) ? data.hooks : []);
+      await fetchHooks();
       setPhase("ready");
+    } catch (error) {
+      setPhase("error");
+      toast.error(error.message);
+    }
+  };
+
+  // Post-mutation reload: a create/edit/delete that succeeded must not flash
+  // the full skeleton — only a failed re-read escalates to the error state
+  // (whose copy already says the saved data is safe).
+  const refresh = async () => {
+    try {
+      await fetchHooks();
     } catch (error) {
       setPhase("error");
       toast.error(error.message);
@@ -201,6 +240,31 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
       toast.error(error.message);
     } finally {
       setSwappingId(null);
+    }
+  };
+
+  // Save a copy (built-ins only): duplicates the pattern into the user's set
+  // via the existing POST /hooks route — built-ins stay read-only. The
+  // backend re-derives the requires_source tag; the copy carries the
+  // original's style/format so the Mine view keeps the same axes.
+  const saveCopy = async (hook) => {
+    setCopyingId(hook.id);
+    try {
+      await api.post("/hooks", {
+        text_pattern: hook.text_pattern,
+        style: hook.style,
+        format: hook.format,
+        tags: hook.tags ?? [],
+      });
+      toast.success("Copy saved to your Mine set — edit it there.");
+      await refresh();
+      // Reveal the duplicate where the toast says it lives. Only after the
+      // refresh lands, so Mine never flashes its empty state.
+      setMineOnly(true);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -346,9 +410,11 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
                     selected={selectedHookId === hook.id}
                     hasOriginal={Boolean(originalPost)}
                     swapping={swappingId === hook.id}
+                    copying={copyingId === hook.id}
                     onUse={() => onSelect?.(hook.id)}
                     onRemove={() => onSelect?.(null)}
                     onSwap={() => swap(hook)}
+                    onSaveCopy={() => saveCopy(hook)}
                   />
                 );
               })}

@@ -58,6 +58,14 @@ vi.mock("@/api/client", () => ({
 }));
 
 import { api, ApiError } from "@/api/client";
+import { toast } from "sonner";
+
+// CRUD flows assert the toast contract (success/error) directly, so sonner is
+// mocked at the module seam like board.test.jsx does — no Toaster, no jsdom
+// matchMedia dance, deterministic assertions.
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
 
 const activeProfileResponse = {
   profile: {
@@ -442,5 +450,69 @@ describe("HookPicker", () => {
     await userEvent.click(dataChip);
     await screen.findByTestId("hook-row-H01");
     expect(dataChip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("saves a copy of a built-in through POST /hooks and reveals it under Mine", async () => {
+    // Mutable backing list simulates the backend: the POST inserts, the next
+    // GET (the picker's refresh) returns the catalog plus the new user copy.
+    const userCopy = {
+      id: "U-copy1",
+      text_pattern: "Unpopular opinion: {claim}.",
+      style: "contrarian",
+      format: "hot_take",
+      tags: ["bold", "low_risk"],
+      is_builtin: false,
+      user_id: "usr_test",
+    };
+    const hooksNow = [...hookListResponse.hooks];
+    api.get.mockImplementation(() =>
+      Promise.resolve({ hooks: [...hooksNow], count: hooksNow.length }),
+    );
+    api.post.mockImplementation(() => {
+      hooksNow.push(userCopy);
+      return Promise.resolve(userCopy);
+    });
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H01");
+    await userEvent.click(screen.getByTestId("hook-save-copy-H01"));
+
+    // The duplicate carries the built-in's pattern, style, format, and tags —
+    // the backend derives requires_source itself (no route changes).
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith("/hooks", {
+        text_pattern: "Unpopular opinion: {claim}.",
+        style: "contrarian",
+        format: "hot_take",
+        tags: ["bold", "low_risk"],
+      });
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        "Copy saved to your Mine set — edit it there.",
+      );
+    });
+    // The Mine view auto-reveals the duplicate — the empty state's promised
+    // flow (save a copy from Built-ins, then edit it there).
+    expect(await screen.findByTestId("hook-row-U-copy1")).toBeInTheDocument();
+    expect(screen.getByTestId("hook-mine-chip")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("surfaces a failed save-a-copy without touching the list", async () => {
+    api.get.mockResolvedValue(hookListResponse);
+    api.post.mockRejectedValue(
+      new ApiError({ status: 422, kind: "validation", message: "Pattern is too long — 280 characters max." }),
+    );
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H01");
+    await userEvent.click(screen.getByTestId("hook-save-copy-H01"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Pattern is too long — 280 characters max.");
+    });
+    // Nothing was changed: the catalog still renders, no Mine switch happened.
+    expect(screen.getByTestId("hook-row-H01")).toBeInTheDocument();
+    expect(screen.getByTestId("hook-mine-chip")).toHaveAttribute("aria-pressed", "false");
   });
 });
