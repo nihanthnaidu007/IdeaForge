@@ -27,6 +27,7 @@ export const ERROR_KINDS = {
   NOT_FOUND: "not_found",
   NETWORK: "network",
   SERVER: "server",
+  CAP: "cap",
   UNKNOWN: "unknown",
 };
 
@@ -49,6 +50,7 @@ const KIND_BY_CODE = {
   PROVIDER_UNAVAILABLE: ERROR_KINDS.UNAVAILABLE,
   RESEARCH_FAILED: ERROR_KINDS.RESEARCH_FAILED,
   GENERATION_FAILED: ERROR_KINDS.GENERATION_FAILED,
+  USAGE_CAP_EXCEEDED: ERROR_KINDS.CAP,
   INTERNAL_ERROR: ERROR_KINDS.SERVER,
 };
 
@@ -66,6 +68,8 @@ const FALLBACK_MESSAGE = {
     "The research service didn't return usable results — try again.",
   [ERROR_KINDS.GENERATION_FAILED]:
     "The model's response wasn't usable after a retry — try again.",
+  [ERROR_KINDS.CAP]:
+    "Today's bundled allowance is spent — add your own API key in Settings for unlimited use.",
   [ERROR_KINDS.RATE_LIMITED]: "Too many requests — slow down and try again.",
   [ERROR_KINDS.VALIDATION]: "The request was rejected — adjust the input.",
   [ERROR_KINDS.CONFLICT]:
@@ -79,7 +83,7 @@ const FALLBACK_MESSAGE = {
 };
 
 export class ApiError extends Error {
-  constructor({ status, kind, message, provider, detail, code, requestId, retryAfter, fields }) {
+  constructor({ status, kind, message, provider, detail, code, requestId, retryAfter, fields, caps }) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -90,6 +94,9 @@ export class ApiError extends Error {
     this.requestId = requestId;
     this.retryAfter = retryAfter;
     this.fields = fields;
+    // USAGE_CAP_EXCEEDED payload (app/errors.py `extra` merge): the allowance
+    // facts the cap card states — never parsed out of the message string.
+    this.caps = caps;
   }
 }
 
@@ -124,6 +131,14 @@ export function normalizeApiError(error) {
       : undefined;
     const retryAfter =
       Number(headers?.["retry-after"]) || Number(data?.retry_after) || undefined;
+    const caps =
+      data?.allowance != null
+        ? {
+            allowance: data.allowance,
+            resetsAt: data.resets_at,
+            resource: data.resource,
+          }
+        : undefined;
     const requestId = headers?.["x-request-id"] ?? data?.request_id ?? undefined;
     return new ApiError({
       status,
@@ -134,6 +149,7 @@ export function normalizeApiError(error) {
       requestId,
       retryAfter,
       fields,
+      caps,
       message: data?.message || detail || FALLBACK_MESSAGE[kind],
     });
   }
