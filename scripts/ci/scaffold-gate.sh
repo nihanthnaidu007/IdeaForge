@@ -16,7 +16,9 @@ cd "$(dirname "$0")/../.."
 
 SECRET_RE='tvly-[A-Za-z0-9_-]{16,}|sk-emergent-[A-Za-z0-9]+|sk-ant-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{48}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[baprs]-[A-Za-z0-9-]{10,}|phc_[A-Za-z0-9]{20,}'
 SCAFFOLD_RE='emergent|Universal Key'
-ALLOW_RE='^\.?/?(frontend/src/|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
+#   e2e/                                                   -> permanent: Playwright fixtures pin synthetic
+#                                                             sentinel provider keys (never real ones)
+ALLOW_RE='^\.?/?(frontend/src/|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py|e2e/)'
 
 fails=$(grep -rInE \
     --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=build \

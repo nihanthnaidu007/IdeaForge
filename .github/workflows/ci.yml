@@ -90,3 +90,24 @@ jobs:
             exit 1
           fi
           echo "dist/ clean ($js_count JS chunks)."
+
+  docker:
+    name: Docker images (multi-stage, non-root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api image
+        run: docker build -t ideaforge-api:ci ./backend
+
+      - name: Build web image
+        run: docker build -t ideaforge-web:ci ./frontend
+
+  compose-smoke:
+    name: Compose smoke (boot, health, auth, non-root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run compose smoke check
+        run: bash scripts/ci/compose-smoke.sh
