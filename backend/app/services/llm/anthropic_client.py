@@ -140,6 +140,8 @@ class AnthropicLLM:
         sdk: AsyncAnthropic | None = None,
     ) -> None:
         # An injected sdk (tests) replaces the real client entirely.
+        self.provider_name = "anthropic"
+        self.model_name = model
         self._sdk = sdk if sdk is not None else AsyncAnthropic(
             api_key=api_key, timeout=timeout_seconds
         )

@@ -14,9 +14,11 @@ from typing import Any
 import pytest
 from app.routers import posts as posts_module
 from app.routers import voice as voice_module
-from app.services.llm.provider import MissingKeyError
+from app.services.llm.anthropic_client import AnthropicLLM
+from app.services.llm.provider import MissingKeyError, pick_provider
+from app.services.vault import build_vault
 
-from tests.conftest import make_settings
+from tests.conftest import VALID_MASTER_KEY, make_settings
 from tests.unit.fakes import FakeDatabase
 from tests.unit.fakes import RecordingLLM as _RecordingLLM
 from tests.unit.fakes import stub_get_llm as _stub_get_llm
@@ -185,7 +187,7 @@ async def test_generation_prompt_carries_profile_descriptors(
     )
     capture: list[_RecordingLLM] = []
     monkeypatch.setattr(
-        posts_module, "get_llm", _stub_get_llm(["A post."], capture=capture)
+        posts_module, "get_llm", _stub_get_llm([json.dumps({"post_text": "A post."})], capture=capture)
     )
     response = await client.post(
         "/api/generate-post",
@@ -212,7 +214,7 @@ async def test_generation_without_profile_uses_neutral_fallback(
 ) -> None:
     capture: list[_RecordingLLM] = []
     monkeypatch.setattr(
-        posts_module, "get_llm", _stub_get_llm(["A post."], capture=capture)
+        posts_module, "get_llm", _stub_get_llm([json.dumps({"post_text": "A post."})], capture=capture)
     )
     response = await client.post(
         "/api/generate-post",
@@ -312,12 +314,35 @@ async def test_extraction_prompt_carries_schema_and_samples(
     assert "devtools" in call["prompt"]  # niche context slot-filled
 
 
+async def _store_anthropic_key(fake_db: FakeDatabase, user_id: str) -> None:
+    """Seed a real encrypted BYOK blob — the vault path, not a fake shape."""
+    vault = build_vault(VALID_MASTER_KEY)
+    blob = vault.encrypt(user_id, "anthropic", "test-anthropic-key-not-real")
+    await fake_db.user_preferences.insert_one(
+        {"user_id": user_id, "keys": {"anthropic": blob}}
+    )
+
+
+def _patch_anthropic_complete(
+    monkeypatch: pytest.MonkeyPatch, response: str
+) -> list[AnthropicLLM]:
+    """Record every AnthropicLLM instance whose complete() is invoked."""
+    seen: list[AnthropicLLM] = []
+
+    async def _complete(self, *, system, prompt, json_mode=False, max_tokens=2_000):
+        seen.append(self)
+        return response
+
+    monkeypatch.setattr(AnthropicLLM, "complete", _complete)
+    return seen
+
+
 # --- auto provider detection --------------------------------------------------
 
 
 async def test_pick_provider_requested_beats_detection() -> None:
     # An explicit provider wins without touching the database at all.
-    picked = await voice_module._pick_provider(
+    picked = await pick_provider(
         "user-1", "anthropic", FakeDatabase(), make_settings()
     )
     assert picked == "anthropic"
@@ -333,13 +358,13 @@ async def test_pick_provider_auto_prefers_byok_blob() -> None:
             "keys": {"anthropic": {"nonce": "n", "ciphertext": "c"}},
         }
     )
-    picked = await voice_module._pick_provider("user-1", None, db, make_settings())
+    picked = await pick_provider("user-1", None, db, make_settings())
     assert picked == "anthropic"
 
 
 async def test_pick_provider_auto_falls_back_to_server_env_key() -> None:
     db = FakeDatabase()
-    picked = await voice_module._pick_provider(
+    picked = await pick_provider(
         "user-1", None, db, make_settings(openai_api_key="sk-server-default")
     )
     assert picked == "openai"
@@ -347,7 +372,7 @@ async def test_pick_provider_auto_falls_back_to_server_env_key() -> None:
 
 async def test_pick_provider_auto_without_keys_raises_missing_key() -> None:
     with pytest.raises(MissingKeyError):
-        await voice_module._pick_provider(
+        await pick_provider(
             "user-1", None, FakeDatabase(), make_settings()
         )
 
@@ -355,24 +380,44 @@ async def test_pick_provider_auto_without_keys_raises_missing_key() -> None:
 async def test_extraction_auto_provider_uses_connected_key(
     client, auth_headers, monkeypatch, fake_db
 ) -> None:
-    # The frontend posts without a provider: detection must extract with the
-    # provider the user actually connected (here, Anthropic-only).
+    # The frontend posts without a provider: the real get_llm must resolve the
+    # provider the user actually connected (here, Anthropic-only), decrypt
+    # their stored key, and construct the Anthropic client against it.
     user = await fake_db.users.find_one({"email": "creator@example.com"})
-    await fake_db.user_preferences.insert_one(
-        {
-            "user_id": user["id"],
-            "keys": {"anthropic": {"nonce": "n", "ciphertext": "c"}},
-        }
+    await _store_anthropic_key(fake_db, user["id"])
+    seen = _patch_anthropic_complete(
+        monkeypatch, _profile_response(_valid_profile())
     )
-    seen: list[str] = []
 
-    async def _recording_get_llm(user_id, provider, *, db, vault, settings):
-        seen.append(provider)
-        return _RecordingLLM([_profile_response(_valid_profile())])
-
-    monkeypatch.setattr(voice_module, "get_llm", _recording_get_llm)
     response = await client.post(
         "/api/voice/profile", json={"samples": _SAMPLES}, headers=auth_headers
     )
     assert response.status_code == 200, response.text
-    assert seen == ["anthropic"]
+    assert len(seen) == 1
+    assert seen[0].provider_name == "anthropic"
+
+
+async def test_generation_auto_provider_uses_anthropic_byok(
+    client, auth_headers, monkeypatch, fake_db
+) -> None:
+    # Regression (dogfood): generation routes used to hardcode OpenAI — an
+    # Anthropic-only user got HTTP 400 on every post. Auto detection must
+    # resolve their connected key end to end, same seam as extraction.
+    user = await fake_db.users.find_one({"email": "creator@example.com"})
+    await _store_anthropic_key(fake_db, user["id"])
+    seen = _patch_anthropic_complete(
+        monkeypatch, json.dumps({"post_text": "A generated post."})
+    )
+
+    response = await client.post(
+        "/api/generate-post",
+        json={
+            "idea": {"title": "Vector DB cost curves"},
+            "format": "hot_take",
+            "tone": "professional",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+    assert len(seen) == 1
+    assert seen[0].provider_name == "anthropic"

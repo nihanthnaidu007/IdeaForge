@@ -304,6 +304,8 @@ class FakeDatabase:
 class RecordingLLM:
     """Stub LLMProvider: records every complete() call, replays responses."""
 
+    model_name = "openai"
+
     def __init__(self, responses: list[str]) -> None:
         self._responses = list(responses)
         self.calls: list[dict[str, Any]] = []
@@ -329,6 +331,9 @@ def stub_get_llm(responses: list[str], *, capture: list[RecordingLLM] | None = N
         user_id: str, provider: str, *, db: Any, vault: Any, settings: Any
     ) -> RecordingLLM:
         llm = RecordingLLM(responses)
+        # Usage-event attribution reads provider_name off the instance the
+        # same way it does off the real clients.
+        llm.provider_name = provider
         if capture is not None:
             capture.append(llm)
         return llm

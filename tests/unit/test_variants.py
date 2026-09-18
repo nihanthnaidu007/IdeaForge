@@ -32,6 +32,10 @@ class ScriptedLLM:
     ProviderUnavailableError so the whole-request semantics are exercised.
     """
 
+    # Identity read by usage/error attribution and cost hints.
+    provider_name = "openai"
+    model_name = "openai"
+
     def __init__(
         self,
         responses: dict[int, str] | None = None,

@@ -8,6 +8,7 @@ import seam; no live provider calls ever.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.routers import posts as posts_module
@@ -173,7 +174,7 @@ async def _generate_with_hook(
 ) -> tuple[dict, list[_RecordingLLM]]:
     capture: list[_RecordingLLM] = []
     monkeypatch.setattr(
-        posts_module, "get_llm", _stub_get_llm(["A generated post."], capture=capture)
+        posts_module, "get_llm", _stub_get_llm([json.dumps({"post_text": "A generated post."})], capture=capture)
     )
     payload: dict[str, Any] = {
         "idea": {"title": "Vector DB cost curves"},
@@ -213,7 +214,7 @@ async def test_generate_with_unknown_hook_id_is_404(
     client, auth_headers, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        posts_module, "get_llm", _stub_get_llm(["A generated post."])
+        posts_module, "get_llm", _stub_get_llm([json.dumps({"post_text": "A generated post."})])
     )
     response = await client.post(
         "/api/generate-post",
@@ -230,7 +231,7 @@ async def test_swap_hook_rewrites_only_the_opening(
     monkeypatch.setattr(
         posts_module,
         "get_llm",
-        _stub_get_llm(["Rewritten opening + unchanged body."], capture=capture),
+        _stub_get_llm([json.dumps({"post_text": "Rewritten opening + unchanged body."})], capture=capture),
     )
     original = "Old opening line.\n\nBody that must stay standing."
     response = await client.post(
@@ -258,7 +259,7 @@ async def test_swap_hook_unknown_hook_id_is_404(
     client, auth_headers, monkeypatch
 ) -> None:
     monkeypatch.setattr(
-        posts_module, "get_llm", _stub_get_llm(["Rewritten."])
+        posts_module, "get_llm", _stub_get_llm([json.dumps({"post_text": "Rewritten."})])
     )
     response = await client.post(
         "/api/swap-hook",

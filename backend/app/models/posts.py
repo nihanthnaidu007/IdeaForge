@@ -55,6 +55,9 @@ class GenerateVariantsRequest(BaseModel):
     tone: str = Field(default="professional", min_length=1, max_length=120)
     custom_instructions: str | None = Field(default=None, max_length=2000)
     insights: dict | None = None  # insight card: feeds evidence_gaps + angles
+    # §1.3 hook injection: the picked Hook Bank pattern governs each draft's
+    # first line (validated in the route — unknown ids are 404s, not dropped).
+    hook_id: str | None = Field(default=None, max_length=64)
     # Validated trend rows — malformed client payloads are 422s, not 500s.
     trends: list[TrendItem] = Field(default_factory=list, max_length=20)
     researched_at: str | None = Field(default=None, max_length=40)

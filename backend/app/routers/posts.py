@@ -40,6 +40,7 @@ from app.services.llm.provider import (
     GenerationRefusedError,
     complete_json_with_retry,
     last_usage_of,
+    pick_provider,
 )
 from app.services.usage import (
     POST_DRAFTED,
@@ -125,7 +126,10 @@ def _stored_trends(set_doc: dict[str, Any]) -> list[TrendItem]:
 
 
 async def _voice_block(db: Any, user_id: str) -> str:
-    profile = await db.voice_profiles.find_one({"user_id": user_id}, {"_id": 0})
+    """The active profile's descriptors, or the honest no-profile note."""
+    profile = await get_active_voice_profile(db, user_id)
+    if profile is None:
+        return voice_fallback_block()
     return build_voice_block(profile)
 
 
@@ -201,7 +205,7 @@ async def _run_variant_generation(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
-    llm = await get_llm(user_id, "openai", db=db, vault=vault, settings=settings)
+    llm = await get_llm(user_id, "auto", db=db, vault=vault, settings=settings)
     voice_block = await _voice_block(db, user_id)
     idea_block = build_idea_block(
         data.idea, data.insights, custom_instructions=data.custom_instructions
@@ -233,10 +237,10 @@ async def _run_variant_generation(
                 llm,
                 system=MASTER_SYSTEM_PROMPT,
                 prompt=user_message,
-                provider="openai",
+                provider=llm.provider_name,
                 max_tokens=4000,
             )
-            draft = parse_variant_output(parsed, provider="openai")
+            draft = parse_variant_output(parsed, provider=llm.provider_name)
         except GenerationRefusedError as exc:
             # §4.4: a refusal is truthful input feedback — never retried
             # silently, never substituted. Its column shows the typed state.
@@ -256,7 +260,7 @@ async def _run_variant_generation(
             db,
             user_id,
             VARIANT_GENERATED,
-            provider="openai",
+            provider=llm.provider_name,
             tokens_in=usage.tokens_in if usage else None,
             tokens_out=usage.tokens_out if usage else None,
             variant_id=variant_id,
@@ -291,8 +295,8 @@ async def _run_variant_generation(
     cost_hint = build_cost_hint(
         "generate_variant",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=last_prompt_chars or 6000,
         output_tokens=estimate_output_tokens(format_code),
         k=len([v for v in variants if v["status"] == "ready"]),
@@ -355,6 +359,7 @@ async def cost_estimate(
     action: str,
     format: str | None = None,
     current_user: dict[str, str] = Depends(get_current_user),
+    db: Any = Depends(get_db),
     settings: Any = Depends(get_settings_dep),
 ) -> dict[str, Any]:
     """Cost-hint preview for the banner that precedes an action (AI pack §6).
@@ -363,8 +368,12 @@ async def cost_estimate(
     before assembly; the estimate says "about" for a reason). Unpriced models
     return estimated_usd: null — the UI gates with Run anyway, per §6.5.
     """
-    provider = "openai"
-    model = settings.openai_model
+    provider = await pick_provider(current_user["user_id"], None, db, settings)
+    model = (
+        settings.anthropic_model
+        if provider == "anthropic"
+        else settings.openai_model
+    )
     format_code = ""
     output_tokens: int | None = None
     if format:
@@ -427,7 +436,7 @@ async def tweak_variant(
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
     )
     voice_block = await _voice_block(db, current_user["user_id"])
     briefs = {b.brief_id: b for b in VARIATION_BRIEFS[format_code]}
@@ -455,16 +464,16 @@ async def tweak_variant(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
         db,
         current_user["user_id"],
         VARIANT_TWEAKED,
-        provider="openai",
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
         variant_id=f"{set_doc['id']}:{index}",
@@ -500,8 +509,8 @@ async def tweak_variant(
     cost_hint = build_cost_hint(
         "generate_variant",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
         k=index + 1,
@@ -528,9 +537,10 @@ async def generate_post(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
     )
     voice_block = await _voice_block(db, current_user["user_id"])
+    hook_block = await _hook_section(db, current_user["user_id"], data.hook_id)
     user_message = assemble_user_message(
         idea_block=build_idea_block(
             data.idea, data.insights, custom_instructions=data.custom_instructions
@@ -541,29 +551,30 @@ async def generate_post(
             [], evidence_gaps=_insight_evidence_gaps(data.insights)
         ),
         voice_block=voice_block,
+        hook_block=hook_block,
     )
     parsed = await complete_json_with_retry(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
         db,
         current_user["user_id"],
         POST_DRAFTED,
-        provider="openai",
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
     )
     cost_hint = build_cost_hint(
         "generate_post",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
     )
@@ -583,7 +594,11 @@ async def tweak_post(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"],
+        "auto",
+        db=db,
+        vault=vault,
+        settings=settings,
     )
     voice_block = await _voice_block(db, current_user["user_id"])
     user_message = assemble_user_message(
@@ -603,24 +618,22 @@ async def tweak_post(
         llm,
         system=MASTER_SYSTEM_PROMPT,
         prompt=user_message,
-        provider="openai",
+        provider=llm.provider_name,
         max_tokens=4000,
     )
-    draft = parse_variant_output(parsed, provider="openai")
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
     usage = last_usage_of(llm)
     await record_usage_event(
-        db,
-        current_user["user_id"],
-        POST_TWEAKED,
-        provider="openai",
+        db, current_user["user_id"], POST_TWEAKED,
+        provider=llm.provider_name,
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
     )
     cost_hint = build_cost_hint(
         "generate_post",
         settings=settings,
-        provider="openai",
-        model=settings.openai_model,
+        provider=llm.provider_name,
+        model=llm.model_name,
         prompt_chars=len(user_message),
         output_tokens=estimate_output_tokens(format_code),
     )
@@ -639,7 +652,7 @@ async def swap_hook(
     opening line; the rest of the post stays byte-for-byte the user's draft
     (craft pack §4.3). One LLM call, user's BYOK credits."""
     llm = await get_llm(
-        current_user["user_id"], "openai", db=db, vault=vault, settings=settings
+        current_user["user_id"], "auto", db=db, vault=vault, settings=settings
     )
     hook_section = await _hook_section(db, current_user["user_id"], data.hook_id)
     voice_block = await _voice_block(db, current_user["user_id"])
@@ -654,5 +667,12 @@ async def swap_hook(
         f"{voice_block}\n\n"
         "Write the updated post now."
     )
-    response = await llm.complete(system=MASTER_SYSTEM_PROMPT, prompt=prompt)
-    return {"post": response.strip(), "hook_pattern_id": data.hook_id}
+    parsed = await complete_json_with_retry(
+        llm,
+        system=MASTER_SYSTEM_PROMPT,
+        prompt=prompt,
+        provider=llm.provider_name,
+        max_tokens=2000,
+    )
+    draft = parse_variant_output(parsed, provider=llm.provider_name)
+    return {"post": draft["post_text"], "hook_pattern_id": data.hook_id}

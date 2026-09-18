@@ -19,6 +19,7 @@ from app.services.llm.openai_client import OpenAILLM
 from app.services.llm.provider import (
     LLMProvider,
     ProviderError,
+    pick_provider,
     resolve_user_key,
 )
 from app.services.vault import Vault
@@ -86,10 +87,15 @@ async def get_llm(
     Every generation route resolves its key here — BYOK first, server env
     default second, typed MissingKeyError otherwise. No universal-key fallback.
     """
-    if provider not in ("anthropic", "openai"):
+    if provider not in ("anthropic", "openai", "auto"):
         raise ProviderError(
             f"'{provider}' is not an LLM provider.", provider=provider
         )
+    if provider == "auto":
+        # "auto" = the connected key decides: BYOK presence first, server
+        # env default second, typed MissingKeyError otherwise. Generation
+        # routes never hardcode a provider their user may not have.
+        provider = await pick_provider(user_id, None, db, settings)
     api_key = await resolve_user_key(db, vault, user_id, provider, settings)
     if provider == "anthropic":
         return AnthropicLLM(api_key=api_key, model=settings.anthropic_model)
