@@ -30,6 +30,7 @@ from app.models.posts import (
     TweakPostRequest,
     TweakVariantRequest,
 )
+from app.models.research import TrendItem
 from app.services.cost_hints import build_cost_hint
 from app.services.llm.provider import (
     GenerationError,
@@ -78,6 +79,16 @@ def _insight_evidence_gaps(insights: dict[str, Any] | None) -> list[str]:
     if not isinstance(gaps, list):
         return []
     return [str(gap) for gap in gaps if str(gap).strip()][:5]
+
+
+def _stored_trends(set_doc: dict[str, Any]) -> list[TrendItem]:
+    """Re-validate the trend rows persisted with a variant set.
+
+    generate_variants stores ``t.model_dump()`` dicts (Mongo has no models);
+    build_trend_block reads model attributes, so dicts must be coerced back —
+    malformed stored rows raise a 422-shaped ValidationError, not a 500.
+    """
+    return [TrendItem.model_validate(t) for t in (set_doc.get("trends") or [])]
 
 
 async def _voice_block(db: Any, user_id: str) -> str:
@@ -391,7 +402,7 @@ async def tweak_variant(
             status_code=409,
             detail="That variant's brief is no longer available — generate a new set.",
         )
-    trends = [t for t in (set_doc.get("trends") or [])]
+    trends = _stored_trends(set_doc)
     user_message = assemble_user_message(
         idea_block=build_idea_block(
             set_doc["idea"],

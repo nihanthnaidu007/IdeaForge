@@ -231,6 +231,42 @@ async def test_tweak_variant_versions_stored(client, scripted_llm, fake_db, auth
     assert any(e["event"] == "variant_tweaked" for e in fake_db.usage_events.docs.values())
 
 
+async def test_tweak_variant_revalidates_stored_trend_dicts(
+    client, scripted_llm, auth_headers
+) -> None:
+    """Regression: variant sets persist trends as model_dump() dicts, and the
+    tweak route must coerce them back into TrendItem before build_trend_block
+    reads .title/.snippet — dict rows previously 500'd with AttributeError."""
+    trends = [
+        {
+            "title": "Vector DB consolidation accelerates",
+            "snippet": "Two major vendors announced consolidation moves.",
+            "url": "https://example.com/vector-db-consolidation",
+            "source": "viral news today",
+        },
+        {
+            "title": "Retrieval defaults under scrutiny",
+            "snippet": "Engineering teams re-evaluate retrieval defaults.",
+            "url": "https://example.com/retrieval-defaults",
+            "source": "trending AI topics LinkedIn",
+        },
+    ]
+    first = await _generate(client, auth_headers, trends=trends)
+    assert first.status_code == 200, first.text
+    set_id = first.json()["variant_set"]["id"]
+
+    response = await client.post(
+        "/api/tweak-variant",
+        json={
+            "set_id": set_id,
+            "variant_index": 0,
+            "instruction": "Open with the consolidation news instead.",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+
 async def test_tweak_variant_twice_accumulates_versions(client, scripted_llm, auth_headers) -> None:
     first = await _generate(client, auth_headers)
     set_id = first.json()["variant_set"]["id"]
