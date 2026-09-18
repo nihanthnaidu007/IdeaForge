@@ -19,8 +19,8 @@ from app.config import Settings
 # AI pack §6 cost-hint strings — exact copy, {placeholders} filled at render.
 COST_HINTS: dict[str, str] = {
     "research": (
-        "Heads up: this runs a live web search and a summary pass on your own API key — "
-        "about {est_usd}. You can re-use the last research instead."
+        "Heads up: this runs research and idea generation together — a live web search "
+        "plus a few model calls at your configured model rates, about {est_usd}."
     ),
     "forge_ideas": (
         "Forging {n} ideas runs one model call on your key — about {est_usd}. Ideas are "
