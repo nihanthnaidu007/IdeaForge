@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     tavily_api_key: str | None = None
+    # Operator override for the Tavily search endpoint (self-hosted proxies,
+    # local dogfooding). None uses the real Tavily API.
+    tavily_base_url: str | None = None
 
     openai_model: str = "gpt-5.2"
     anthropic_model: str = "claude-sonnet-4-5"
