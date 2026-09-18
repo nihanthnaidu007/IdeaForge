@@ -255,6 +255,20 @@ async def test_export_markdown_route(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_export_routes_record_posts_exported_with_count(client, auth_headers, fake_db):
+    await client.post(
+        "/api/save-idea",
+        json={"topic_title": "Counted export", "rating": 7, "rating_explanation": "why"},
+        headers=auth_headers,
+    )
+    for path in ("/api/export/ideas.md", "/api/export/ideas.csv"):
+        assert (await client.get(path, headers=auth_headers)).status_code == 200
+
+    events = [e for e in fake_db.usage_events.docs.values() if e["event"] == "posts_exported"]
+    assert [e.get("count") for e in events] == [1, 1]
+
+
+@pytest.mark.asyncio
 async def test_export_ics_route_only_scheduled(client, auth_headers):
     await client.post(
         "/api/save-idea",

@@ -41,7 +41,6 @@ const Navbar = ({ title, backTo, center, onRequireAuth }) => {
         <FolderOpen className="w-5 h-5" aria-hidden="true" />
       </button>
       <button
-      <button
         onClick={() => goTo("/board")}
         data-testid="nav-board-btn"
         className="p-2 text-zinc-400 hover:text-white transition-colors"

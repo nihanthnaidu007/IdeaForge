@@ -16,6 +16,7 @@ from fastapi.responses import PlainTextResponse
 from app.deps import get_current_user, get_db
 from app.routers.board import filter_ideas
 from app.services.exporter import ideas_to_csv, ideas_to_markdown, scheduled_to_ics
+from app.services.usage import POSTS_EXPORTED, record_usage_event
 
 router = APIRouter()
 
@@ -49,6 +50,9 @@ async def export_ideas_markdown(
 ) -> PlainTextResponse:
     ideas = filter_ideas(await _owned_ideas(db, current_user["user_id"]), q=q, tag=tag, status=status)
     stamp = datetime.now(UTC).strftime("%Y%m%d")
+    await record_usage_event(
+        db, current_user["user_id"], POSTS_EXPORTED, count=len(ideas)
+    )
     return _attachment(
         f"ideaforge-board-{stamp}.md", ideas_to_markdown(ideas), "text/markdown; charset=utf-8"
     )
@@ -64,6 +68,9 @@ async def export_ideas_csv(
 ) -> PlainTextResponse:
     ideas = filter_ideas(await _owned_ideas(db, current_user["user_id"]), q=q, tag=tag, status=status)
     stamp = datetime.now(UTC).strftime("%Y%m%d")
+    await record_usage_event(
+        db, current_user["user_id"], POSTS_EXPORTED, count=len(ideas)
+    )
     return _attachment(
         f"ideaforge-board-{stamp}.csv", ideas_to_csv(ideas), "text/csv; charset=utf-8"
     )
