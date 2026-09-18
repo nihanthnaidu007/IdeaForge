@@ -7,7 +7,7 @@ import {
   setScenario, stubRequests, clearStubRequests, API, routes,
 } from "../../utils/helpers.js";
 
-const USER_KEY = "sk-ant-e2e-user-key-987654321";
+const USER_KEY = "e2e-anthropic-user-key-987654321";
 
 test("J02: save Anthropic key → test-key probe uses the user's key → hint stays masked", async ({ page, request }) => {
   installDenyList(page, test.info());

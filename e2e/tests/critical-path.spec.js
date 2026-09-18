@@ -29,8 +29,8 @@ test("register → keys → research → forge → variants → save → board",
 
   // 2. Save keys through the API (Settings UI path is J02's job).
   await saveKeysViaApi(request, email, E2E_PASSWORD, {
-    tavily_api_key: "tvly-e2e-user-key-123456",
-    anthropic_api_key: "sk-ant-e2e-user-key-123456",
+    tavily_api_key: "e2e-tavily-user-key-123456",
+    anthropic_api_key: "e2e-anthropic-user-key-123456",
   });
 
   // 3-4. Combined research → forge flow (the shipped dashboard contract).

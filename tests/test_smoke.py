@@ -62,6 +62,13 @@ SELF_REFERENTIAL = (
 )
 SIBLING_OWNED_PREFIXES = ("frontend/src/",)
 
+# The E2E harness quotes scaffold strings it asserts against (the F02 spec
+# asserts the UI never leaks "Emergent") — pattern-defining, like the gate
+# scripts. Secret-shaped tokens get NO e2e exemption: E2E fixtures use
+# non-secret-shaped sentinel keys (e2e-...), so a real-shaped key under e2e/
+# is still a leak this test must catch.
+E2E_PATTERN_DEFINING_PREFIXES = ("e2e/",)
+
 SKIP_DIRS = {
     ".git",
     "node_modules",
@@ -111,6 +118,7 @@ def test_no_scaffold_strings_outside_sibling_owned_paths():
         if rel not in SIBLING_OWNED_EXACT
         and rel not in SELF_REFERENTIAL
         and not rel.startswith(SIBLING_OWNED_PREFIXES)
+        and not rel.startswith(E2E_PATTERN_DEFINING_PREFIXES)
         and SCAFFOLD_RE.search(path.read_text(encoding="utf-8", errors="ignore"))
     ]
     assert hits == [], (
