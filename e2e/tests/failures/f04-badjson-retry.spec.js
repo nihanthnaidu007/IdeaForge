@@ -5,9 +5,15 @@ import {
   WEB, API, installDenyList, authedStorage, setScenario, clearStubRequests, routes,
 } from "../../utils/helpers.js";
 
+// Quarantined as test.fixme during the 2026-09-18 CI flakes; the unquarantine
+// attempt (PR #17) reded again on run 35344981425 — with request-level stub
+// tracing in place, the retry's Anthropic insight call never left the backend
+// process (tavily research ran, then 15.7s of server-side silence; the stub
+// answered everything that arrived). Evidence and trace timeline:
+// https://github.com/nihanthnaidu007/IdeaForge/issues/16#issuecomment-5730080443
 test.fixme(
   "F04: bad JSON once → typed failure with zero cards → retry recovers",
-  "Flaky under CI load — failure migrates between steps (error-visibility, retry-recovery); quarantined pending investigation in #16",
+  "CI-only: backend stalls between research and the insight LLM call — run 35344981425, trace evidence in #16",
   async ({ page, request }) => {
   installDenyList(page, test.info());
   const email = `f04-${Date.now()}@e2e.ideaforge.dev`;
