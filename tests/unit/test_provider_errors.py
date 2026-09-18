@@ -252,7 +252,9 @@ async def test_valid_json_needs_no_retry() -> None:
 
 
 def _make_probe(exc: Exception | None):
-    async def _probe(provider: str, api_key: str) -> None:
+    async def _probe(
+        provider: str, api_key: str, settings: object | None = None
+    ) -> None:
         if exc is not None:
             raise exc
 
