@@ -419,4 +419,22 @@ describe("HookPicker", () => {
     await userEvent.click(screen.getByTestId("hooks-clear-filters-btn"));
     await screen.findByTestId("hook-row-H01");
   });
+
+  it("toggles a style chip off on re-click instead of requiring the clear button", async () => {
+    api.get.mockResolvedValue(hookListResponse);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H01");
+
+    // Filter to the data style: the contrarian H01 disappears…
+    const dataChip = screen.getByTestId("hook-style-chip-data");
+    await userEvent.click(dataChip);
+    await screen.findByTestId("hook-row-H09");
+    expect(screen.queryByTestId("hook-row-H01")).toBeNull();
+
+    // …and re-clicking the pressed chip is a toggle-off (aria-pressed contract).
+    await userEvent.click(dataChip);
+    await screen.findByTestId("hook-row-H01");
+    expect(dataChip).toHaveAttribute("aria-pressed", "false");
+  });
 });

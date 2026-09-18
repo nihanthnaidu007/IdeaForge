@@ -250,7 +250,9 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
               <button
                 key={chip.id}
                 type="button"
-                onClick={() => setStyleFilter(chip.id)}
+                onClick={() =>
+                  setStyleFilter(styleFilter === chip.id ? "all" : chip.id)
+                }
                 aria-pressed={styleFilter === chip.id}
                 data-testid={`hook-style-chip-${chip.id}`}
                 className={`text-xs rounded-full px-3 py-1 border ${
