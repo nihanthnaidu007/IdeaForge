@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import Navbar from "@/components/layout/Navbar";
 import SkipLink from "@/components/layout/SkipLink";
@@ -146,6 +147,7 @@ const forgeStrings = (error) => {
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [niche, setNiche] = useState("AI");
   const [tone, setTone] = useState("Professional");
   const [loading, setLoading] = useState(false);
@@ -548,7 +550,11 @@ const Dashboard = () => {
         tags,
       });
       refreshTagSuggestions();
-      toast.success("Idea saved");
+      // The forge→board handoff: the toast carries the navigation, so the
+      // save stops being a dead end.
+      toast.success("Idea saved", {
+        action: { label: "Open Board", onClick: () => navigate("/board") },
+      });
     } catch (error) {
       toast.error(error.message);
     }
