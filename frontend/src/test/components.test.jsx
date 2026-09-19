@@ -334,3 +334,93 @@ describe("first-spend cost hint (§6 cost law)", () => {
     }
   });
 });
+
+describe("save-time tags (spec Tag completion)", () => {
+  const SAVE_IDEA = {
+    title: "RAG evals",
+    rating: 8.4,
+    rating_explanation: "High tension, concrete deadline.",
+  };
+
+  const mockResearchFlow = () => {
+    const origGet = api.get.getMockImplementation();
+    api.get.mockImplementation((url) => {
+      if (url === "/auth/me") return authMe();
+      if (url === "/cost-estimate?action=research")
+        return Promise.resolve({ action: "research", hint: "h", estimated_usd: 0.02 });
+      if (url === "/board/tags") return Promise.resolve(["evals"]);
+      return Promise.resolve({});
+    });
+    return () => api.get.mockImplementation(origGet);
+  };
+
+  it("sends the tags entered on the idea card with the save call", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const restoreGet = mockResearchFlow();
+    // Call order once the run fires: /research, then /generate-ideas; the
+    // third is the save itself.
+    api.post
+      .mockResolvedValueOnce({ raw_trends: [], researched_at: "2026-09-19T00:00:00Z" })
+      .mockResolvedValueOnce({ ideas: [SAVE_IDEA] })
+      .mockResolvedValueOnce({ id: "saved_1", tags: ["rag"] });
+
+    try {
+      const user = userEvent.setup();
+      renderRoute("/dashboard");
+
+      await user.click(await screen.findByTestId("generate-ideas-btn"));
+      const card = await screen.findByTestId("idea-card-0");
+      await user.click(card); // expand to reach the save footer
+
+      const tagInput = await screen.findByTestId("save-tag-editor-0-input");
+      await user.type(tagInput, "rag{Enter}");
+
+      await user.click(screen.getByTestId("save-idea-0-btn"));
+      await waitFor(() => {
+        const save = api.post.mock.calls.find(([url]) => url === "/save-idea");
+        expect(save).toBeTruthy();
+        expect(save[1]).toMatchObject({ topic_title: "RAG evals", tags: ["rag"] });
+      });
+    } finally {
+      restoreGet();
+    }
+  });
+
+  it("suggests the existing tag set at save time and refreshes it after a save", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const restoreGet = mockResearchFlow();
+    api.post
+      .mockResolvedValueOnce({ raw_trends: [], researched_at: "2026-09-19T00:00:00Z" })
+      .mockResolvedValueOnce({ ideas: [SAVE_IDEA] })
+      .mockResolvedValueOnce({ id: "saved_1", tags: ["evals"] });
+
+    try {
+      const user = userEvent.setup();
+      renderRoute("/dashboard");
+
+      await user.click(await screen.findByTestId("generate-ideas-btn"));
+      await user.click(await screen.findByTestId("idea-card-0"));
+
+      // The suggestion comes from GET /board/tags (fetched on mount): "ev"
+      // matches the existing "evals" tag.
+      const tagInput = await screen.findByTestId("save-tag-editor-0-input");
+      await user.type(tagInput, "ev");
+      const suggestions = await screen.findByTestId("save-tag-editor-0-suggestions");
+      expect(suggestions).toHaveTextContent("evals");
+      await user.keyboard("{Enter}");
+
+      await user.click(screen.getByTestId("save-idea-0-btn"));
+      // A save extends the tag set — the suggestion source is refreshed so
+      // the next save's autocomplete sees the newest tag.
+      await waitFor(() => {
+        const tagFetches = api.get.mock.calls.filter(([url]) => url === "/board/tags");
+        expect(tagFetches.length).toBeGreaterThanOrEqual(2);
+      });
+      const save = api.post.mock.calls.find(([url]) => url === "/save-idea");
+      await waitFor(() => expect(save?.[1]?.tags).toEqual(["evals"]));
+    } finally {
+      restoreGet();
+    }
+  });
+});
+

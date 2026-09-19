@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import Navbar from "@/components/layout/Navbar";
 import SkipLink from "@/components/layout/SkipLink";
@@ -163,6 +163,21 @@ const Dashboard = () => {
   // The research that produced the current ideas: variants and insight cards
   // carry it forward so generation stays grounded in the same evidence.
   const lastResearchRef = useRef({ trends: [], researched_at: null });
+
+  // Save-time tag suggestions (spec Tag completion): the board's existing tag
+  // set powers the autocomplete so saves extend one consistent set. A failed
+  // refresh keeps the last set and is logged — suggestions are hints, not
+  // data; the tag input degrades to free typing honestly either way.
+  const [tagSuggestions, setTagSuggestions] = useState([]);
+  const refreshTagSuggestions = useCallback(() => {
+    api
+      .get("/board/tags")
+      .then((list) => setTagSuggestions(Array.isArray(list) ? list : []))
+      .catch((err) => console.error("Tag suggestion refresh failed:", err));
+  }, []);
+  useEffect(() => {
+    refreshTagSuggestions();
+  }, [refreshTagSuggestions]);
 
   const generateIdeas = async () => {
     setLoading(true);
@@ -471,7 +486,7 @@ const Dashboard = () => {
     };
   }, [selectedFormat, variantSet]);
 
-  const saveIdea = async (idea, index, withPost = false) => {
+  const saveIdea = async (idea, index, withPost = false, tags = []) => {
     const ideaInsights = insights[index]?.data || {};
     try {
       await api.post("/save-idea", {
@@ -493,7 +508,11 @@ const Dashboard = () => {
         post_format: withPost ? selectedFormat : null,
         niche,
         tone: tone.toLowerCase(),
+        // Save-time tags (spec Tag completion): SaveIdeaRequest already
+        // accepts them; the TagInput bounds the list to the backend's caps.
+        tags,
       });
+      refreshTagSuggestions();
       toast.success("Idea saved");
     } catch (error) {
       toast.error(error.message);
@@ -563,7 +582,8 @@ const Dashboard = () => {
                   insightsCostHint={insightHint}
                   onGenerateInsights={() => generateInsights(idea, index)}
                   onExplore={() => selectIdea(idea, index)}
-                  onSave={() => saveIdea(idea, index)}
+                  onSave={(saveTags) => saveIdea(idea, index, false, saveTags)}
+                  tagSuggestions={tagSuggestions}
                 />
               ))}
             </div>
