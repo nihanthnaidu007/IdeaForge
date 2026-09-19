@@ -106,6 +106,19 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_notifications_user_at",
         ),
     ],
+    # Trend cache: per-trend forge looks rows up by server-assigned id; the
+    # TTL index purges expired rows (the query also checks expires_at —
+    # Mongo's TTL sweeper is asynchronous, the lookup must not rely on it).
+    "trend_cache": [
+        IndexModel([("id", ASCENDING)], name="uq_trend_cache_id", unique=True),
+        IndexModel(
+            [("user_id", ASCENDING), ("created_at", DESCENDING)],
+            name="ix_trend_cache_user_created",
+        ),
+        IndexModel(
+            [("expires_at", ASCENDING)], name="ttl_trend_cache_expiry", expireAfterSeconds=0
+        ),
+    ],
 }
 
 

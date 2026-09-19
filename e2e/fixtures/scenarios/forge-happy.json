@@ -23,6 +23,10 @@
   ],
   "openai": [
     {
+      "match_body_contains": { "messages": "WHY-NOW GROUNDING" },
+      "serve_fixture": "FIX-TRENDS-ENRICH-01"
+    },
+    {
       "sequence": [
         "FIX-POST-HTA",
         "FIX-POST-HTB",

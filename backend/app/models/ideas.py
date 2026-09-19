@@ -1,11 +1,16 @@
 """Idea Forge schemas."""
 
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.models.research import MAX_TRENDS, TrendItem
+
+# Per-trend forge accepts at most the rows the prompt builder renders anyway
+# (the router caps the trend block at 8 rows).
+MAX_FORGE_TRENDS = 8
+TrendId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
 
 # The six canonical format enums (craft pack §5.1 post_angles.format; the
 # backend audit's server.py format list). Frontend IDs are kebab-case; the
@@ -51,9 +56,20 @@ class InsightCard(BaseModel):
 class GenerateIdeasRequest(BaseModel):
     # M4: typed rows + bounded list — the router renders these into the LLM
     # prompt, so shape and size are contract, not client discretion.
-    raw_trends: list[TrendItem] = Field(max_length=MAX_TRENDS)
+    raw_trends: list[TrendItem] = Field(default_factory=list, max_length=MAX_TRENDS)
+    # Per-trend forge: scope generation to server-cached trends by id — no
+    # re-search, no extra Tavily spend. Exactly one trend source per request.
+    trend_ids: list[TrendId] = Field(default_factory=list, max_length=MAX_FORGE_TRENDS)
     niche: str = Field(default="AI", min_length=1, max_length=120)
     tone: str = Field(default="professional", min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _exactly_one_trend_source(self) -> "GenerateIdeasRequest":
+        # Both sources is ambiguous (which trends govern?), neither would burn
+        # a model call on an empty trend block — both are client errors.
+        if bool(self.raw_trends) == bool(self.trend_ids):
+            raise ValueError("Provide exactly one of raw_trends or trend_ids.")
+        return self
 
 
 class IdeaInsightsRequest(BaseModel):

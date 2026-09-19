@@ -93,9 +93,12 @@ class FakeCollection:
             if isinstance(cond, dict) and cond and all(
                 k.startswith("$") for k in cond
             ):
-                # Range operators (e.g. the analytics window's {"$gte": since}).
+                # Range/set operators (e.g. the analytics window's
+                # {"$gte": since}, trend-cache lookups' {"$in": ids}).
                 for op, operand in cond.items():
                     try:
+                        if op == "$in" and value not in operand:
+                            return False
                         if op == "$gte" and not value >= operand:
                             return False
                         if op == "$gt" and not value > operand:
@@ -104,7 +107,7 @@ class FakeCollection:
                             return False
                         if op == "$lt" and not value < operand:
                             return False
-                        if op not in ("$gte", "$gt", "$lte", "$lt"):
+                        if op not in ("$in", "$gte", "$gt", "$lte", "$lt"):
                             return False  # unsupported operator fails closed
                     except TypeError:
                         return False  # incomparable types never match
@@ -290,6 +293,9 @@ class FakeDatabase:
         self.hooks = FakeCollection(
             unique_fields=("id", "format"), id_field=("id", "format")
         )
+        # Trend cache (Trend Radar): per-trend forge looks rows up by the
+        # server-assigned id the research route returned.
+        self.trend_cache = FakeCollection(unique_fields=("id",))
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 
