@@ -1,7 +1,7 @@
-// Shared E2E helpers: stub control, auth, deny-list, fail-loud assertions.
-// Boundaries per E2E pack §2: the stub is the ONLY provider; anything that
-// resolves a real provider host fails the test; localStorage keys are the
-// shipped AuthContext names.
+// Shared E2E helpers: stub control, auth, deny-list. Boundaries per E2E
+// pack §2: the stub is the ONLY provider; anything that resolves a real
+// provider host fails the test; localStorage keys are the shipped
+// AuthContext names.
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,36 +71,3 @@ export async function authedStorage(request, email, origin = WEB) {
   const body = await registerViaApi(request, email);
   return storageStateFor(origin, body.token, body.refresh_token);
 }
-
-export async function loginStorage(request, email, origin = WEB) {
-  const body = await loginViaApi(request, email);
-  return storageStateFor(origin, body.token, body.refresh_token);
-}
-
-export async function saveKeysViaApi(request, email, password, keys) {
-  const body = await loginViaApi(request, email, password);
-  const res = await request.put(`${API}${routes.preferences.put}`, {
-    headers: { Authorization: `Bearer ${body.token}` },
-    data: keys,
-  });
-  if (!res.ok()) throw new Error(`save keys → ${res.status()} ${await res.text()}`);
-}
-
-// Fenced-failure assertion (§4.0): typed banner + retry affordance + zero
-// content of the given selector set, all as visible UI state.
-export async function expectTypedFailure(page, { headline, zeroSelectors = [] }) {
-  if (headline) await expect(page.getByText(headline).first()).toBeVisible();
-  const retry = page.getByTestId("error-retry-btn").first();
-  await expect(retry).toBeVisible();
-  for (const selector of zeroSelectors) {
-    await expect(page.locator(selector)).toHaveCount(0);
-  }
-}
-
-export const ideaTitles = [
-  "RAG evals are the new unit tests",
-  "Agent budgets are backwards — measure before you spend",
-  "The POC-to-production gap in 2026",
-  "We replaced our LLM judge with 40 golden questions",
-  "Your copilot is not a teammate yet",
-];
