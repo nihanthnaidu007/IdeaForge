@@ -19,27 +19,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { EmptyState, ErrorState, SkeletonCardGrid } from "@/components/states/AsyncStates";
+import TagInput from "@/components/board/TagInput";
 import { api } from "@/api/client";
 import { formatSchedule, STATUS_COLUMNS, validTargets, columnLabel } from "@/lib/board";
 
 // The Content Board (spec §What We Build): one kanban per status pipeline,
-// tag chips, text/tag filters, and adjacent-step button transitions — buttons
-// because they're keyboard-accessible and honest about the one-stage rule
-// (drag would imply free moves the backend rejects). Transitions are
-// optimistic with a named revert; exports honor the active filter.
+// inline tag add/remove per card, text/tag filters, and adjacent-step button
+// transitions — buttons because they're keyboard-accessible and honest about
+// the one-stage rule (drag would imply free moves the backend rejects).
+// Transitions and tag edits are optimistic with a named revert; exports honor
+// the active filter.
 
-function TagChip({ tag }) {
-  return (
-    <span
-      data-testid="board-tag-chip"
-      className="inline-flex items-center rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[11px] text-zinc-300"
-    >
-      {tag}
-    </span>
-  );
-}
-
-function BoardCard({ idea, onTransition, onPreview, onSchedule }) {
+function BoardCard({ idea, onTransition, onPreview, onSchedule, onTagsChange, tagSuggestions }) {
   const targets = validTargets(idea.status);
   const schedule = formatSchedule(idea.scheduled_for);
   return (
@@ -51,13 +42,13 @@ function BoardCard({ idea, onTransition, onPreview, onSchedule }) {
         </span>
       </div>
 
-      {idea.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {idea.tags.map((tag) => (
-            <TagChip key={tag} tag={tag} />
-          ))}
-        </div>
-      )}
+      <TagInput
+        tags={idea.tags ?? []}
+        onChange={(nextTags) => onTagsChange(idea, nextTags)}
+        suggestions={tagSuggestions}
+        testId="board-tag-editor"
+        ariaLabel={`Tags for “${idea.topic_title}”`}
+      />
 
       {schedule && (
         <p
@@ -160,6 +151,36 @@ export default function ContentBoard({ onPreview, onSchedule, refreshKey, onExpo
       );
       toast.error(
         `Move didn't save — “${idea.topic_title}” is back in ${columnLabel(from)}. Retry from there.`,
+      );
+    }
+  };
+
+  // Tag edits follow the transition contract: optimistic with a named revert
+  // (UI pack §3.7) — the PATCH is a full-list replace, so the next list is
+  // computed by the caller and sent verbatim. A success also refreshes the
+  // distinct tag set so the filter row and every card's autocomplete see the
+  // new tag; an active tag filter re-applies so a card whose last matching tag
+  // was removed leaves the filtered view instead of lingering under a filter
+  // it no longer satisfies.
+  const updateTags = async (idea, nextTags) => {
+    const previous = idea.tags ?? [];
+    setIdeas((prev) =>
+      prev.map((item) => (item.id === idea.id ? { ...item, tags: nextTags } : item)),
+    );
+    try {
+      const updated = await api.patch(`/board/${idea.id}/tags`, { tags: nextTags });
+      setIdeas((prev) =>
+        prev
+          .map((item) => (item.id === idea.id ? updated : item))
+          .filter((item) => tagFilter === "all" || (item.tags ?? []).includes(tagFilter)),
+      );
+      setTags(await api.get("/board/tags"));
+    } catch {
+      setIdeas((prev) =>
+        prev.map((item) => (item.id === idea.id ? { ...item, tags: previous } : item)),
+      );
+      toast.error(
+        `Tag didn't save — “${idea.topic_title}” keeps its old tags. Retry from the card.`,
       );
     }
   };
@@ -300,6 +321,8 @@ export default function ContentBoard({ onPreview, onSchedule, refreshKey, onExpo
                     onTransition={transition}
                     onPreview={onPreview}
                     onSchedule={onSchedule}
+                    onTagsChange={updateTags}
+                    tagSuggestions={tags}
                   />
                 ))
               )}

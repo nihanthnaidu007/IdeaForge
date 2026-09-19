@@ -236,6 +236,42 @@ async def test_board_tags_endpoint_returns_distinct(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_tag_journey_save_patch_filter(client, auth_headers):
+    """Full tag journey at the HTTP seam (spec Tag completion row): save-time
+    tags land normalized like PATCHed ones, PATCH replaces the list, and both
+    the tag filter and the distinct-tags feed (the UI's autocomplete and
+    filter row) then reflect the change."""
+    saved = await client.post(
+        "/api/save-idea",
+        json={
+            "topic_title": "Eval pipelines",
+            "rating": 8.0,
+            "rating_explanation": "Strong current signal.",
+            "tags": [" evals ", "evals", ""],
+        },
+        headers=auth_headers,
+    )
+    assert saved.status_code == 200, saved.text
+    idea_id = saved.json()["id"]
+    # One normalization rule for save and patch: strip, dedupe, drop empties.
+    assert saved.json()["tags"] == ["evals"]
+
+    patched = await client.patch(
+        f"/api/board/{idea_id}/tags",
+        json={"tags": ["evals", "rag"]},
+        headers=auth_headers,
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["tags"] == ["evals", "rag"]
+
+    filtered = await client.get("/api/board", params={"tag": "rag"}, headers=auth_headers)
+    assert [d["id"] for d in filtered.json()] == [idea_id]
+
+    distinct = await client.get("/api/board/tags", headers=auth_headers)
+    assert distinct.json() == ["evals", "rag"]
+
+
+@pytest.mark.asyncio
 async def test_board_requires_auth(client):
     response = await client.get("/api/board")
     assert response.status_code in (401, 403)

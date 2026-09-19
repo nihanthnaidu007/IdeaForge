@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronDown,
@@ -16,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import AiBadge from "@/components/common/AiBadge";
 import { LoadingSkeleton } from "@/components/states/AsyncStates";
+import TagInput from "@/components/board/TagInput";
 import { POST_FORMATS } from "@/lib/constants";
 
 // One scored idea. Collapsed: title + rating bar. Expanded: the insight card
@@ -35,7 +37,12 @@ const IdeaCard = ({
   onGenerateInsights,
   onExplore,
   onSave,
+  tagSuggestions,
 }) => {
+  // Save-time tag entry (spec Tag completion): ephemeral per card, committed
+  // to the backend only when the save button fires. Autocomplete draws from
+  // the board's existing tag set so saves extend one consistent set.
+  const [saveTags, setSaveTags] = useState([]);
   const tier = ratingTier(idea.rating);
   const ratingWidth = (idea.rating / 10) * 100;
   const card = insights?.status === "done" ? insights.data : null;
@@ -256,6 +263,21 @@ const IdeaCard = ({
                 </div>
               )}
 
+              {/* Save-time tags — keyboard-first, optional, suggested from
+                  the board's existing set */}
+              <div className="space-y-1.5" data-testid={`save-tags-${index}`}>
+                <p className="text-xs uppercase tracking-wider text-zinc-400">
+                  Tags <span className="normal-case tracking-normal">(optional)</span>
+                </p>
+                <TagInput
+                  tags={saveTags}
+                  onChange={setSaveTags}
+                  suggestions={tagSuggestions}
+                  ariaLabel={`Tags for “${idea.title}”`}
+                  testId={`save-tag-editor-${index}`}
+                />
+              </div>
+
               {/* Actions */}
               <div className="flex gap-2 pt-2">
                 <Button
@@ -267,9 +289,10 @@ const IdeaCard = ({
                   Explore Post Formats
                 </Button>
                 <Button
-                  onClick={onSave}
+                  onClick={() => onSave(saveTags)}
                   data-testid={`save-idea-${index}-btn`}
                   variant="outline"
+                  aria-label={`Save “${idea.title}” to Board`}
                   className="border-white/10 text-white hover:bg-white/5"
                 >
                   <Bookmark className="w-4 h-4" />
