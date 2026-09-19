@@ -35,18 +35,22 @@ vi.mock("@/api/client", () => ({
     NOT_FOUND: "not_found",
     NETWORK: "network",
     SERVER: "server",
+    CAP: "cap",
     UNKNOWN: "unknown",
   },
   ApiError: class ApiError extends Error {
-    constructor({ status, kind, message, provider, detail }) {
+    constructor({ status, kind, message, provider, detail, caps }) {
       super(message);
       this.name = "ApiError";
       this.status = status;
       this.kind = kind;
       this.provider = provider;
       this.detail = detail;
+      this.caps = caps;
     }
   },
+  isKeyIssueError: (e) =>
+    ["missing_key", "auth", "quota", "cap"].includes(e?.kind),
   normalizeApiError: (e) => e,
   onUnauthorized: () => {},
   api: {
@@ -159,6 +163,46 @@ describe("componentization", () => {
     expect(settingsBtn).toBeInTheDocument();
     await user.click(settingsBtn);
     expect(await screen.findByTestId("settings-skeleton")).toBeInTheDocument();
+  });
+
+  it("renders the cap card over old ideas when a refresh hits the bundled allowance", async () => {
+    localStorage.setItem("ideaforge_token", "tok");
+    const user = userEvent.setup();
+    renderRoute("/dashboard");
+    await screen.findByTestId("generate-ideas-btn");
+
+    // First run succeeds: ideas land on screen (cap consumed 1/1)
+    api.post.mockResolvedValueOnce({ raw_trends: [] });
+    api.post.mockResolvedValueOnce({
+      ideas: [{ title: "Trend one", rating: 8.5, rating_explanation: "Strong signal" }],
+    });
+    await user.click(screen.getByTestId("generate-ideas-btn"));
+    expect(await screen.findByText("Trend one")).toBeInTheDocument();
+
+    // Second run: the ideas call crosses the bundled allowance (typed 429)
+    api.post.mockResolvedValueOnce({ raw_trends: [] });
+    api.post.mockRejectedValueOnce(
+      new ApiError({
+        status: 429,
+        kind: ERROR_KINDS.CAP,
+        provider: "anthropic",
+        message: "Today's bundled allowance is spent (1 calls). It resets at 2026-09-19 00:00 UTC. Add your own API key in Settings for unlimited use.",
+        caps: { resource: "llm", allowance: 1, resetsAt: "2026-09-19T00:00:00+00:00" },
+      })
+    );
+    await user.click(screen.getByTestId("generate-ideas-btn"));
+
+    // The honest cap card renders — with allowance, reset, and the one
+    // primary action — instead of collapsing into the stale-banner path.
+    const capCard = await screen.findByTestId("key-issue-state");
+    expect(capCard).toHaveTextContent(/Daily allowance spent\./i);
+    expect(capCard).toHaveTextContent(/daily allowance of 1 AI generation calls/i);
+    expect(capCard).toHaveTextContent(/no cap/i);
+    const settingsBtn = screen.getByTestId("error-open-settings-btn");
+    expect(settingsBtn).toHaveTextContent(/Add your own key/i);
+
+    // Old ideas remain on screen below the card (nothing was overwritten)
+    expect(screen.getByText("Trend one")).toBeInTheDocument();
   });
 
   it("renders the masked hint and the §5.3 failed test-key line on a rejected key", async () => {

@@ -31,6 +31,15 @@ export const ERROR_KINDS = {
   UNKNOWN: "unknown",
 };
 
+// Key-issue family (UI pack §3.1): only Settings (or the provider console)
+// can fix these — retrying cannot. A failure of this kind must always render
+// its honest card, even over older data on screen; never collapse into the
+// stale-banner + toast path where no action beyond retry is offered.
+export const isKeyIssueError = (error) =>
+  [ERROR_KINDS.MISSING_KEY, ERROR_KINDS.AUTH, ERROR_KINDS.QUOTA, ERROR_KINDS.CAP].includes(
+    error?.kind,
+  );
+
 const KIND_BY_STATUS = {
   401: ERROR_KINDS.AUTH,
   402: ERROR_KINDS.QUOTA,
