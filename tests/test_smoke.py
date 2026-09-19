@@ -5,7 +5,7 @@ every file in the working tree it asserts:
 
 - no scaffold artifact survived the purge (including the deleted backend/server.py);
 - no committed provider-key-shaped secrets anywhere;
-- no Emergent/scaffold strings outside paths owned by sibling PRs.
+- no Emergent/scaffold strings outside pattern-defining/self-referential files.
 
 Mirrors scripts/ci/scaffold-gate.sh, which enforces the same contract in CI.
 """
@@ -46,12 +46,6 @@ SECRET_RE = re.compile(
 # Emergent/scaffold markers.
 SCAFFOLD_RE = re.compile(r"emergent|Universal Key", re.IGNORECASE)
 
-# Paths sibling rebuild PRs own; each PR purges its own references.
-SIBLING_OWNED_EXACT = (
-    "frontend/package.json",
-    "frontend/package-lock.json",
-)
-
 # Pattern-defining files — they quote the scaffold strings they match against.
 # .github/workflows/ci.yml qualifies too: its dist-hygiene step greps dist/ for
 # the same markers this test bans from source.
@@ -60,7 +54,6 @@ SELF_REFERENTIAL = (
     "tests/test_smoke.py",
     ".github/workflows/ci.yml",
 )
-SIBLING_OWNED_PREFIXES = ("frontend/src/",)
 
 # The E2E harness quotes scaffold strings it asserts against (the F02 spec
 # asserts the UI never leaks "Emergent") — pattern-defining, like the gate
@@ -111,17 +104,15 @@ def test_no_committed_secrets():
     )
 
 
-def test_no_scaffold_strings_outside_sibling_owned_paths():
+def test_no_scaffold_strings_outside_pattern_defining_paths():
     hits = [
         rel
         for rel, path in _repo_files()
-        if rel not in SIBLING_OWNED_EXACT
-        and rel not in SELF_REFERENTIAL
-        and not rel.startswith(SIBLING_OWNED_PREFIXES)
+        if rel not in SELF_REFERENTIAL
         and not rel.startswith(E2E_PATTERN_DEFINING_PREFIXES)
         and SCAFFOLD_RE.search(path.read_text(encoding="utf-8", errors="ignore"))
     ]
     assert hits == [], (
-        "Emergent/scaffold strings found — purge them, or they belong to a "
-        f"sibling PR (add to SIBLING_OWNED): {hits}"
+        "Emergent/scaffold strings found — purge them (pattern-defining "
+        f"files are exempt via SELF_REFERENTIAL): {hits}"
     )
