@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import App from "../App";
 
 // Honesty bundle fix 1: the Dashboard opens on the SAVED niche and tone —
@@ -98,8 +98,13 @@ describe("dashboard opens on the saved defaults (Honesty bundle fix 1)", () => {
 
     // The stored lowercase tone renders as the display-cased option —
     // the value the selector can actually show, not the raw stored string.
-    expect(await screen.findByTestId("niche-selector")).toHaveTextContent(
-      "Data Science",
+    // findBy* resolves on element EXISTENCE, which races the preferences
+    // response: the selector is already mounted with the default before the
+    // saved values land, so the matcher must retry on content (both
+    // selectors update in the same commit once the read resolves).
+    const nicheSelector = await screen.findByTestId("niche-selector");
+    await waitFor(() =>
+      expect(nicheSelector).toHaveTextContent("Data Science"),
     );
     expect(screen.getByTestId("tone-selector-main")).toHaveTextContent(
       "Casual",
