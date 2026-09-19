@@ -2,7 +2,7 @@
 // with HTTP 429 (NOT the pack's original 402 mapping). UI shows the verbatim
 // §3.2 copy with a Retry-After countdown; a previous run's data stays under
 // the dated stale banner instead of vanishing.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   WEB, API, installDenyList, authedStorage, setScenario, clearStubRequests, routes,
 } from "../../utils/helpers.js";

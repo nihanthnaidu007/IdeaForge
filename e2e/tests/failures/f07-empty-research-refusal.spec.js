@@ -1,6 +1,6 @@
 // F07 — Empty Tavily results: the backend refuses to fabricate (ResearchError
 // → typed RESEARCH_FAILED), zero ideas generated.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   API, authedStorage, setScenario,
 } from "../../utils/helpers.js";

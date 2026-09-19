@@ -2,7 +2,7 @@
 // single-flight refresh; the revoked refresh fails (reuse detection revokes
 // the family) and the shipped handler surfaces "Your session expired — log
 // in again." — either the redirect to / or the toast is the honest signal.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   WEB, API, installDenyList, authedStorage, setScenario, routes,
 } from "../../utils/helpers.js";

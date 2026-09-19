@@ -1,7 +1,7 @@
 // F06 — Mid-flight network failure: full reset (all 3 queries) → typed
 // RESEARCH_FAILED banner + zero cards; partial reset (1 of 3) → partial
 // success semantics (the forge proceeds on what it got, no error banner).
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   WEB, installDenyList, authedStorage, setScenario, stubRequests, clearStubRequests,
 } from "../../utils/helpers.js";
