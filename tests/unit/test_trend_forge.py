@@ -26,7 +26,7 @@ _SELECTABLE = {
     "url": "https://example.com/agents-evals",
     "source": "AI agents",
     "why_now": "Two of the last three top threads panic about the same window.",
-    "score": 8,
+    "post_worthiness": 8,
     "score_reason": "Concrete deadline, high emotional charge.",
 }
 _DECOY = {
@@ -36,7 +36,7 @@ _DECOY = {
     "url": "https://example.com/decoy",
     "source": "AI agents",
     "why_now": "Decoy why-now.",
-    "score": 3,
+    "post_worthiness": 3,
     "score_reason": "Noise.",
 }
 

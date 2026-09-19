@@ -53,7 +53,7 @@ def _cache_doc(
         "published_at": item.published_at,
         "freshness": item.freshness,
         "why_now": item.why_now,
-        "score": item.score,
+        "post_worthiness": item.post_worthiness,
         "score_reason": item.score_reason,
         "created_at": now,
         "expires_at": now + timedelta(hours=ttl_hours),
@@ -89,7 +89,7 @@ async def cache_trends(
                 published_at=row.get("published_at"),
                 freshness=row.get("freshness"),
                 why_now=row.get("why_now"),
-                score=row.get("score"),
+                post_worthiness=row.get("post_worthiness"),
                 score_reason=row.get("score_reason"),
             )
         except ValidationError:
@@ -165,7 +165,7 @@ async def load_trends_for_forge(
             published_at=by_id[trend_id].get("published_at"),
             freshness=by_id[trend_id].get("freshness"),
             why_now=by_id[trend_id].get("why_now"),
-            score=by_id[trend_id].get("score"),
+            post_worthiness=by_id[trend_id].get("post_worthiness"),
             score_reason=by_id[trend_id].get("score_reason"),
         )
         for trend_id in requested

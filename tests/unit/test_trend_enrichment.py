@@ -1,7 +1,7 @@
 """Trend enrichment: one batched call, deterministic freshness, fail-open.
 
 Spec (Wave 1, locked): a research run never fails because enrichment failed,
-and a missing why_now/score/freshness is never invented — it rides back as an
+and a missing why_now/post_worthiness/freshness is never invented — it rides back as an
 explicit null the frontend renders as "No signal yet". All stubs are
 deterministic; no test touches a real provider API.
 """
@@ -38,7 +38,7 @@ def _trend(title: str = "Agents eat SaaS", **overrides: Any) -> dict[str, Any]:
         "published_at": None,
         "freshness": None,
         "why_now": None,
-        "score": None,
+        "post_worthiness": None,
         "score_reason": None,
     }
     row.update(overrides)
@@ -84,7 +84,7 @@ def test_normalize_trend_row_starts_explicitly_unknown() -> None:
         {"title": "Agents eat SaaS", "snippet": "s", "url": "u", "source": "q"}
     )
     assert row["why_now"] is None
-    assert row["score"] is None
+    assert row["post_worthiness"] is None
     assert row["score_reason"] is None
     assert row["id"] is None
 
@@ -120,13 +120,13 @@ async def test_enrich_trends_success_merges_fields() -> None:
                     {
                         "index": 0,
                         "why_now": "Two top threads panic about the same deprecation.",
-                        "score": 8,
+                        "post_worthiness": 8,
                         "score_reason": "Concrete deadline, high emotional charge.",
                     },
                     {
                         "index": 1,
                         "why_now": "A major vendor shipped support yesterday.",
-                        "score": 6,
+                        "post_worthiness": 6,
                         "score_reason": "Broad but generic.",
                     },
                 ]
@@ -137,9 +137,9 @@ async def test_enrich_trends_success_merges_fields() -> None:
     merged = await enrich_trends(llm, trends, niche="AI")
 
     assert merged[0]["why_now"].startswith("Two top threads")
-    assert merged[0]["score"] == 8
+    assert merged[0]["post_worthiness"] == 8
     assert merged[0]["score_reason"] == "Concrete deadline, high emotional charge."
-    assert merged[1]["score"] == 6
+    assert merged[1]["post_worthiness"] == 6
 
 
 async def test_enrich_trends_partial_answer_leaves_missing_unknown() -> None:
@@ -147,7 +147,7 @@ async def test_enrich_trends_partial_answer_leaves_missing_unknown() -> None:
     llm = RecordingLLM(
         [
             _enrichment_payload(
-                [{"index": 1, "why_now": "Vendor shipped support.", "score": 7}]
+                [{"index": 1, "why_now": "Vendor shipped support.", "post_worthiness": 7}]
             )
         ]
     )
@@ -155,11 +155,11 @@ async def test_enrich_trends_partial_answer_leaves_missing_unknown() -> None:
     merged = await enrich_trends(llm, trends, niche="AI")
 
     assert merged[1]["why_now"] == "Vendor shipped support."
-    assert merged[1]["score"] == 7
+    assert merged[1]["post_worthiness"] == 7
     # Indices the model did not answer stay explicitly unknown — not synthesized.
     for index in (0, 2):
         assert merged[index]["why_now"] is None
-        assert merged[index]["score"] is None
+        assert merged[index]["post_worthiness"] is None
         assert merged[index]["score_reason"] is None
 
 
@@ -169,16 +169,16 @@ async def test_enrich_trends_invalid_fields_render_unknown() -> None:
         [
             _enrichment_payload(
                 [
-                    {  # out-of-range score → unknown; valid why_now survives
+                    {  # out-of-range post_worthiness → unknown; valid why_now survives
                         "index": 0,
                         "why_now": "Deprecation window announced.",
-                        "score": 99,
+                        "post_worthiness": 99,
                         "score_reason": "n",
                     },
-                    {  # non-numeric score and non-string why_now → unknown
+                    {  # non-numeric post_worthiness and non-string why_now → unknown
                         "index": 1,
                         "why_now": 42,
-                        "score": "great",
+                        "post_worthiness": "great",
                     },
                     {"index": 7, "why_now": "Hallucinated index is dropped."},
                 ]
@@ -189,9 +189,9 @@ async def test_enrich_trends_invalid_fields_render_unknown() -> None:
     merged = await enrich_trends(llm, trends, niche="AI")
 
     assert merged[0]["why_now"] == "Deprecation window announced."
-    assert merged[0]["score"] is None
+    assert merged[0]["post_worthiness"] is None
     assert merged[1]["why_now"] is None
-    assert merged[1]["score"] is None
+    assert merged[1]["post_worthiness"] is None
 
 
 async def test_enrich_trends_wrong_payload_shape_is_fail_open() -> None:
@@ -201,7 +201,7 @@ async def test_enrich_trends_wrong_payload_shape_is_fail_open() -> None:
     merged = await enrich_trends(llm, trends, niche="AI")
 
     assert merged[0]["why_now"] is None
-    assert merged[0]["score"] is None
+    assert merged[0]["post_worthiness"] is None
 
 
 async def test_enrich_trends_unparseable_json_raises_for_router_fail_open() -> None:
@@ -214,9 +214,9 @@ async def test_enrich_trends_unparseable_json_raises_for_router_fail_open() -> N
 def test_merge_enrichment_handles_bare_array_payload() -> None:
     trends = [_trend("Trend One")]
     merged = merge_enrichment(
-        trends, [{"index": 0, "why_now": "Window is open.", "score": 9}]
+        trends, [{"index": 0, "why_now": "Window is open.", "post_worthiness": 9}]
     )
-    assert merged[0]["score"] == 9
+    assert merged[0]["post_worthiness"] == 9
 
 
 def test_build_enrichment_block_includes_published_when_known() -> None:
@@ -287,7 +287,7 @@ async def test_research_fail_open_on_enrichment_failure(
         # Explicit presence of the fields — absent keys would push the
         # frontend into synthesizing values, which is the forbidden path.
         assert "why_now" in trend and trend["why_now"] is None
-        assert "score" in trend and trend["score"] is None
+        assert "post_worthiness" in trend and trend["post_worthiness"] is None
         assert "score_reason" in trend and trend["score_reason"] is None
         # Freshness is deterministic, so it survives the enrichment outage.
         assert trend["freshness"] == "this_week"
@@ -306,7 +306,7 @@ async def test_research_enriches_and_caches_with_ids(
                     {
                         "index": 0,
                         "why_now": "Two top threads panic about the same deprecation.",
-                        "score": 8,
+                        "post_worthiness": 8,
                         "score_reason": "Concrete deadline.",
                     }
                 ]
@@ -327,7 +327,7 @@ async def test_research_enriches_and_caches_with_ids(
     assert response.status_code == 200, response.text
     trends = response.json()["raw_trends"]
     assert trends[0]["why_now"].startswith("Two top threads")
-    assert trends[0]["score"] == 8
+    assert trends[0]["post_worthiness"] == 8
     assert trends[0]["id"]
 
     app = client._transport.app
@@ -335,5 +335,5 @@ async def test_research_enriches_and_caches_with_ids(
     assert len(docs) == 3  # every validated row is cached for per-trend forge
     cached = next(doc for doc in docs if doc["id"] == trends[0]["id"])
     assert cached["why_now"] == trends[0]["why_now"]
-    assert cached["score"] == 8
+    assert cached["post_worthiness"] == 8
     assert cached["user_id"]  # user-scoped docs; owner asserted in test_trend_forge

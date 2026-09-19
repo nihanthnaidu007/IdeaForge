@@ -1,9 +1,10 @@
 """Trend enrichment — the Trend Radar's why-now and post-worthiness layer.
 
 One batched JSON-mode LLM call per research run (bounded spend — never
-per-trend calls) annotates the Tavily rows with ``why_now``, ``score``, and
-``score_reason``. ``freshness`` never touches the model: it is derived
-deterministically from the source's own published timestamp.
+per-trend calls) annotates the Tavily rows with ``why_now``,
+``post_worthiness``, and ``score_reason``. ``freshness`` never touches the
+model: it is derived deterministically from the source's own published
+timestamp.
 
 Fail-open invariant (spec, locked): enrichment failure or a missing field
 renders as explicitly unknown — the field rides back as ``None`` so the
@@ -34,10 +35,10 @@ For each trend, produce a why-now line and a post-worthiness score.
 Rules:
 - WHY-NOW GROUNDING: why_now must be 1-2 specific sentences grounded ONLY in that trend's own title, snippet, and source context — what changed, who is reacting, what window is opening. Never add facts, numbers, names, or events that the trend's own row does not contain.
 - WHEN THERE IS NO SIGNAL: if the trend's row gives no basis for a why-now claim, return null for why_now. An unknown why-now renders as "no signal yet" in the product; an invented one is the exact failure this field exists to prevent.
-- SCORE: an integer 1-10 for how post-worthy this trend is for a LinkedIn creator right now (10 = concrete, urgent, widely felt; 1 = noise). Use the full scale — not every trend deserves 8+.
-- SCORE REASON: one sentence naming what drove the score (specificity, urgency, evidence, breadth of appeal).
+- POST-WORTHINESS: the post_worthiness field, an integer 1-10 for how post-worthy this trend is for a LinkedIn creator right now (10 = concrete, urgent, widely felt; 1 = noise). Use the full scale — not every trend deserves 8+.
+- SCORE REASON: one sentence naming what drove the post_worthiness (specificity, urgency, evidence, breadth of appeal).
 - OUTPUT: exactly one JSON object, no prose outside it:
-  {"trends": [{"index": <row index>, "why_now": string or null, "score": integer or null, "score_reason": string or null}]}
+  {"trends": [{"index": <row index>, "why_now": string or null, "post_worthiness": integer or null, "score_reason": string or null}]}
   Include one entry per index you received, using the same index numbers."""
 
 TREND_ENRICHMENT_USER_TEMPLATE = """=== NICHE ===
@@ -114,7 +115,7 @@ def normalize_trend_row(row: dict[str, Any]) -> dict[str, Any]:
         "published_at": published_at,
         "freshness": derive_freshness(published_at),
         "why_now": None,
-        "score": None,
+        "post_worthiness": None,
         "score_reason": None,
     }
 
@@ -152,9 +153,10 @@ def _clean_score_reason(value: Any) -> str | None:
     return cleaned or None
 
 
-def _clean_score(value: Any) -> int | float | None:
-    # bool is an int subclass — a model "true" is not a score.
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+def _clean_post_worthiness(value: Any) -> int | None:
+    # bool is an int subclass — a model "true" is not a score. A non-integer
+    # (8.5) ignores the integer instruction — unknown, never rounded.
+    if isinstance(value, bool) or not isinstance(value, int):
         return None
     if not 1 <= value <= 10:
         return None
@@ -199,7 +201,7 @@ def merge_enrichment(
             continue
         cleaned = {
             "why_now": _clean_why_now(entry.get("why_now")),
-            "score": _clean_score(entry.get("score")),
+            "post_worthiness": _clean_post_worthiness(entry.get("post_worthiness")),
             "score_reason": _clean_score_reason(entry.get("score_reason")),
         }
         if any(value is not None for value in cleaned.values()):
@@ -218,9 +220,9 @@ async def enrich_trends(
 ) -> list[dict[str, Any]]:
     """One batched JSON-mode call over the whole trend set (bounded spend).
 
-    Returns the rows with why_now/score/score_reason merged by index;
-    unknown stays None. Raises only what ``llm.complete`` raises — the
-    research route fail-opens around that call.
+    Returns the rows with why_now/post_worthiness/score_reason merged by
+    index; unknown stays None. Raises only what ``llm.complete`` raises —
+    the research route fail-opens around that call.
     """
     if not trends:
         return []

@@ -35,7 +35,11 @@ class TrendItem(BaseModel):
     published_at: str | None = Field(default=None, max_length=40)
     freshness: Freshness | None = None
     why_now: str | None = Field(default=None, max_length=1000)
-    score: int | float | None = Field(default=None, ge=1, le=10)
+    # The enrichment score is named post_worthiness — NOT score — because
+    # clients (E2E fixtures, older UI builds) have long sent a Tavily-style
+    # 0-1 relevance ``score`` in raw_trends that this model must keep
+    # ignoring. Colliding the names would 422 every pre-existing caller.
+    post_worthiness: int | None = Field(default=None, ge=1, le=10)
     score_reason: str | None = Field(default=None, max_length=1000)
 
 

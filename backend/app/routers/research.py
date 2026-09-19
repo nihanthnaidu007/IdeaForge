@@ -4,8 +4,8 @@ The scaffold caught Tavily failures and returned AI-invented "trends" with
 HTTP 200; a failed search is still a typed 502 and the only trends that reach
 the client are real, source-labeled results. On top of that, every run now
 carries the Trend Radar's enrichment fields: freshness derived from the
-source's own published timestamp, and why-now/score from ONE batched
-JSON-mode LLM call. Enrichment is fail-open (spec, locked invariant): when it
+source's own published timestamp, and why-now/post-worthiness from ONE
+batched JSON-mode LLM call. Enrichment is fail-open (spec, locked invariant): when it
 fails or a field is missing, the trend still renders with the field
 explicitly unknown — never invented, never a failed research run.
 """
