@@ -60,6 +60,10 @@ const KIND_BY_CODE = {
   RESEARCH_FAILED: ERROR_KINDS.RESEARCH_FAILED,
   GENERATION_FAILED: ERROR_KINDS.GENERATION_FAILED,
   USAGE_CAP_EXCEEDED: ERROR_KINDS.CAP,
+  // Per-trend forge: an unknown/expired/not-owned trend id is the typed 404
+  // (trend_cache.TrendNotFoundError) — same not_found kind the status map
+  // yields, stated explicitly because the forge flow branches on it.
+  TRENDS_NOT_FOUND: ERROR_KINDS.NOT_FOUND,
   INTERNAL_ERROR: ERROR_KINDS.SERVER,
 };
 
