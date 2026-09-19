@@ -48,7 +48,7 @@ const SnoozeGroup = ({ ideaId, onSnooze }) => (
   </span>
 );
 
-export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) {
+function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) {
   const [ideaId, setIdeaId] = useState(preselected?.id ?? "");
   const [when, setWhen] = useState(() => localInputValue(quickPick("tomorrow")));
   const [submitting, setSubmitting] = useState(false);
