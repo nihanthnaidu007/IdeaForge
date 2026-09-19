@@ -38,10 +38,6 @@ class SwapHookRequest(BaseModel):
     tone: str = "professional"
 
 
-class PostResponse(BaseModel):
-    post: str
-
-
 class GenerateVariantsRequest(BaseModel):
     """One variant-set generation: idea + evidence + format in, N drafts out.
 
