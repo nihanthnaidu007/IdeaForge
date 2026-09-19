@@ -9,22 +9,22 @@
 # Scaffold-string ALLOWED paths still carry references on purpose:
 #   frontend/src/                                        -> app-cleanup PR
 #                                                           (Universal Key copy in Dashboard/Settings)
-#   e2e/                                                 -> pattern-defining: the F02 spec quotes
-#                                                           "Emergent" to assert the UI never leaks it
 #   .github/workflows/ci.yml                             -> self-referential: its dist-hygiene
 #                                                           step greps for the same patterns
 # scripts/ci/scaffold-gate.sh, tests/test_smoke.py      -> self-referential: these two files
 #                                                           define the patterns being matched
+#
+# e2e/ needs no scaffold exemption: the F02 spec quotes capital-E "Emergent",
+# which the case-sensitive scaffold pattern below does not match.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 SECRET_RE='tvly-[A-Za-z0-9_-]{16,}|sk-emergent-[A-Za-z0-9]+|sk-ant-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{48}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[baprs]-[A-Za-z0-9-]{10,}|phc_[A-Za-z0-9]{20,}'
 SCAFFOLD_RE='emergent|Universal Key'
 # Self-referential/sibling-owned: these quote the patterns they define or are
-# owned by sibling rebuild PRs. The scaffold scan additionally exempts e2e/;
-# the secret scan does not.
-SECRET_ALLOW_RE='^\.?/?(frontend/src/|frontend/package|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
-SCAFFOLD_ALLOW_RE="${SECRET_ALLOW_RE}|^\.?/?e2e/"
+# owned by sibling rebuild PRs.
+SECRET_ALLOW_RE='^\.?/?(frontend/src/|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
+SCAFFOLD_ALLOW_RE="${SECRET_ALLOW_RE}"
 
 scan() {
     local re="$1" allow="$2"
