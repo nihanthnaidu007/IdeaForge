@@ -144,6 +144,7 @@ const Dashboard = () => {
   const [expandedId, setExpandedId] = useState(null);
   const [insights, setInsights] = useState({});
   const [insightHint, setInsightHint] = useState(null);
+  const [researchHint, setResearchHint] = useState(null);
   const [selectedIdea, setSelectedIdea] = useState(null);
   const [selectedFormat, setSelectedFormat] = useState(null);
   const [customInstructions, setCustomInstructions] = useState("");
@@ -412,6 +413,27 @@ const Dashboard = () => {
   // Cost hints (§6 BYOK rule): one batched estimate for insight cards when a
   // fresh idea set lands, and a per-format estimate for variant generation
   // when a format is picked — both fetched BEFORE any spend happens.
+  // §6 cost law at the loop's FIRST spend: the combined research→forge run's
+  // estimate loads with the dashboard, before the button can fire. The hint
+  // covers what the run costs by end of wave — Tavily search + trend
+  // enrichment + one ideas call ("a few model calls" per the backend string).
+  // Advisory like the other hints: if estimation fails, no invented number is
+  // rendered and the run stays possible.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get("/cost-estimate?action=research")
+      .then((hint) => {
+        if (!cancelled) setResearchHint(hint.hint ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setResearchHint(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     if (ideas.length === 0) return;
@@ -500,6 +522,7 @@ const Dashboard = () => {
             loading={loading}
             scanningText={scanningText}
             scanningSub={scanningSub}
+            costHint={researchHint}
             onGenerate={generateIdeas}
           />
 
