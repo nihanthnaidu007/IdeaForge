@@ -110,6 +110,12 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
             name="ix_notifications_user_at",
         ),
     ],
+    # Onboarding progress (Wave 1): one doc per user — the checklist mirrors
+    # real events, so reads are by user and never hot; unique index keeps the
+    # upserts in services/onboarding single-document.
+    "onboarding_progress": [
+        IndexModel([("user_id", ASCENDING)], name="uq_onboarding_user", unique=True),
+    ],
     # Trend cache: per-trend forge looks rows up by server-assigned id; the
     # TTL index purges expired rows (the query also checks expires_at —
     # Mongo's TTL sweeper is asynchronous, the lookup must not rely on it).
