@@ -9,6 +9,9 @@
   "research": {
     "run": "/api/research"
   },
+  "onboarding": {
+    "progress": "/api/onboarding"
+  },
   "ideas": {
     "generate": "/api/generate-ideas",
     "insights": "/api/idea-insights"

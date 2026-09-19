@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, Check, X, Eye, EyeOff, Loader2 } from "lucide-react";
 import { NICHES, TONES } from "@/lib/constants";
+import { useOnboarding } from "@/context/OnboardingContext";
 
 // §5.2 card contract: connected cards show the Connected chip + masked hint
 // and never re-expose the key; "Replace" is the only path to a new value.
@@ -80,6 +81,11 @@ const BundledAllowanceLine = ({ caps }) => {
 
 const Settings = () => {
   useAuth(); // auth guard is handled by ProtectedRoute
+  // Onboarding replay (Wave 1 §Onboarding): re-open the dashboard guide.
+  // State lives on the server — the POST returns the updated progress, and
+  // nothing here resets it.
+  const { replay } = useOnboarding();
+  const [replaying, setReplaying] = useState(false);
   const [preferences, setPreferences] = useState({
     default_niche: "AI",
     default_tone: "professional",
@@ -159,6 +165,20 @@ const Settings = () => {
       toast.error(error.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Replay (spec §Onboarding): the server lifts the dismissal and keeps every
+  // completed step — the guide re-opens on the dashboard in the state it was.
+  const handleReplayGuide = async () => {
+    setReplaying(true);
+    try {
+      await replay();
+      toast.success("Setup guide is back on your dashboard.");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setReplaying(false);
     }
   };
 
@@ -562,6 +582,27 @@ const Settings = () => {
                     {loading ? "Saving…" : "Save preferences"}
                   </Button>
                 </div>
+              </div>
+
+              {/* Setup guide (Wave 1 §Onboarding): replay re-opens the
+                  dashboard guide without resetting anything — completed steps
+                  stay done, the dismissal just lifts. */}
+              <div className="glass-card rounded-xl p-6">
+                <h2 className="font-heading text-xl font-semibold text-white mb-2">
+                  Setup guide
+                </h2>
+                <p className="text-sm text-zinc-400 mb-4">
+                  Missed the walkthrough? Replay it on your dashboard — your
+                  progress is kept, nothing is reset.
+                </p>
+                <Button
+                  onClick={handleReplayGuide}
+                  disabled={replaying}
+                  data-testid="replay-onboarding-btn"
+                  className="border border-white/10 bg-transparent text-white hover:bg-white/5"
+                >
+                  {replaying ? "Opening…" : "Replay setup guide"}
+                </Button>
               </div>
 
               {/* Voice DNA (spec §Voice DNA row): extraction from past posts,
