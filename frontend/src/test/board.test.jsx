@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import ContentBoard from "@/components/board/ContentBoard";
 import DraftQueue from "@/components/board/DraftQueue";
 import LinkedInPreviewPane, { foldPreview } from "@/components/board/LinkedInPreviewPane";
+import TagInput, { normalizeClientTags } from "@/components/board/TagInput";
 import { api } from "@/api/client";
 
 // Board + queue + preview surfaces, driven through the same api-mock pattern
@@ -34,6 +35,39 @@ vi.mock("@/api/client", () => ({
     delete: vi.fn(),
   },
 }));
+
+// jsdom has no PointerEvent, so the radix Select trigger never opens under
+// userEvent (data-state stays "closed") — a widget-behavior limitation, not
+// a page one. Same module mock as analytics.test.jsx: an item selection
+// calls onValueChange, the only contract ContentBoard uses.
+vi.mock("@/components/ui/select", async () => {
+  const React = await import("react");
+  const SelectContext = React.createContext(null);
+  const Select = ({ value, onValueChange, children }) =>
+    React.createElement(
+      SelectContext.Provider,
+      { value: { value, onValueChange } },
+      children
+    );
+  const SelectTrigger = ({ children, ...props }) =>
+    React.createElement("div", props, children);
+  const SelectValue = ({ placeholder }) =>
+    React.createElement("span", null, placeholder);
+  const SelectContent = ({ children }) => React.createElement("div", null, children);
+  const SelectItem = ({ value, children }) =>
+    React.createElement(SelectContext.Consumer, null, (ctx) =>
+      React.createElement(
+        "button",
+        {
+          type: "button",
+          "data-testid": `select-option-${value}`,
+          onClick: () => ctx?.onValueChange?.(value),
+        },
+        children
+      )
+    );
+  return { Select, SelectTrigger, SelectValue, SelectContent, SelectItem };
+});
 
 const boardIdea = (over = {}) => ({
   id: "idea_1",
@@ -163,6 +197,159 @@ describe("ContentBoard", () => {
     mockBoard([boardIdea({ scheduled_for: "2099-01-01T09:00:00Z" })]);
     renderBoard();
     expect(await screen.findByTestId("board-card-reminder")).toBeInTheDocument();
+  });
+});
+
+// --- board tags (spec Tag completion) -------------------------------------------
+
+describe("ContentBoard tags", () => {
+  it("adds a tag from the card's inline editor through PATCH and settles on the response", async () => {
+    const user = userEvent.setup();
+    mockBoard([boardIdea()]);
+    api.patch.mockResolvedValue(boardIdea({ tags: ["agents", "rag"] }));
+    renderBoard();
+    const input = await screen.findByTestId("board-tag-editor-input");
+    await user.type(input, "rag{Enter}");
+    expect(api.patch).toHaveBeenCalledWith("/board/idea_1/tags", {
+      tags: ["agents", "rag"],
+    });
+    await waitFor(() =>
+      expect(screen.getAllByTestId("board-tag-editor-chip")).toHaveLength(2),
+    );
+  });
+
+  it("removes a tag through the chip's remove button and PATCHes the remaining list", async () => {
+    const user = userEvent.setup();
+    mockBoard([boardIdea({ tags: ["agents", "rag"] })]);
+    api.patch.mockResolvedValue(boardIdea({ tags: ["agents"] }));
+    renderBoard();
+    await user.click(await screen.findByRole("button", { name: "Remove tag rag" }));
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/board/idea_1/tags", { tags: ["agents"] }),
+    );
+  });
+
+  it("reverts the tag row and toasts when the PATCH fails", async () => {
+    const { toast } = await import("sonner");
+    const user = userEvent.setup();
+    mockBoard([boardIdea()]);
+    api.patch.mockRejectedValue(new Error("network"));
+    renderBoard();
+    const input = await screen.findByTestId("board-tag-editor-input");
+    await user.type(input, "rag{Enter}");
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    // The optimistic chip un-happens: the card keeps exactly its old tags.
+    await waitFor(() =>
+      expect(screen.getAllByTestId("board-tag-editor-chip")).toHaveLength(1),
+    );
+    expect(screen.getByTestId("board-tag-editor-chip")).toHaveTextContent("agents");
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.stringMatching(/keeps its old tags/),
+    );
+  });
+
+  it("suggests the existing tag set while typing and commits the highlighted suggestion with the keyboard", async () => {
+    const user = userEvent.setup();
+    mockBoard([boardIdea()], ["agents", "agents-eval"]);
+    api.patch.mockResolvedValue(boardIdea({ tags: ["agents", "agents-eval"] }));
+    renderBoard();
+    const input = await screen.findByTestId("board-tag-editor-input");
+    await user.type(input, "ag");
+    // "agents" is already on the card — only the un-added match is offered.
+    const suggestions = await screen.findByTestId("board-tag-editor-suggestions");
+    expect(suggestions).toHaveTextContent("agents-eval");
+    expect(suggestions).not.toHaveTextContent(/^agents$/);
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(api.patch).toHaveBeenCalledWith("/board/idea_1/tags", {
+      tags: ["agents", "agents-eval"],
+    });
+  });
+
+  it("sends the tag filter as the tag param and lets Clear restore the full board", async () => {
+    const user = userEvent.setup();
+    mockBoard([boardIdea()]);
+    renderBoard();
+    await screen.findByTestId("board-columns");
+    // Select is mocked to its used contract (module mock above): selecting
+    // the "agents" item drives onValueChange like the real widget would.
+    await user.click(screen.getByTestId("board-tag-filter"));
+    await user.click(screen.getByTestId("select-option-agents"));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/board", { params: { tag: "agents" } }),
+    );
+    await user.click(screen.getByTestId("board-clear-filters"));
+    await waitFor(() =>
+      expect(api.get).toHaveBeenCalledWith("/board", { params: {} }),
+    );
+  });
+
+  it("caps tag entry at the backend bound with an honest placeholder", async () => {
+    mockBoard([boardIdea({ tags: ["t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8", "t9"] })]);
+    renderBoard();
+    const input = await screen.findByTestId("board-tag-editor-input");
+    expect(input).toBeDisabled();
+    expect(input).toHaveProperty("placeholder", "Tag limit reached (10)");
+  });
+});
+
+// --- TagInput (direct) -----------------------------------------------------------
+
+describe("TagInput", () => {
+  const renderTagInput = (props = {}) => {
+    const handleChange = vi.fn();
+    render(
+      <TagInput tags={["evals"]} onChange={handleChange} testId="tag-test" {...props} />,
+    );
+    return handleChange;
+  };
+
+  it("commits on Enter and comma, stripping and deduping like the backend", async () => {
+    const user = userEvent.setup();
+    const onChange = renderTagInput();
+    const input = screen.getByTestId("tag-test-input");
+    await user.type(input, "rag{Enter}");
+    expect(onChange).toHaveBeenLastCalledWith(["evals", "rag"]);
+    await user.type(input, "  rag  ,");
+    // Exact-match dedupe — a stripped duplicate never re-fires onChange.
+    expect(onChange).toHaveBeenLastCalledWith(["evals", "rag"]);
+  });
+
+  it("pops the last tag on Backspace from an empty input", async () => {
+    const user = userEvent.setup();
+    const onChange = renderTagInput();
+    const input = screen.getByTestId("tag-test-input");
+    await user.type(input, "{Backspace}");
+    expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
+  it("Escape clears the draft and closes the suggestion list", async () => {
+    const user = userEvent.setup();
+    renderTagInput({ suggestions: ["rag"] });
+    const input = screen.getByTestId("tag-test-input");
+    await user.type(input, "ra");
+    expect(screen.getByTestId("tag-test-suggestions")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByTestId("tag-test-suggestions")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tag-test-input")).toHaveValue("");
+  });
+
+  it("disables input at the cap with the honest placeholder", () => {
+    renderTagInput({ tags: Array.from({ length: 10 }, (_, i) => `t${i}`) });
+    const input = screen.getByTestId("tag-test-input");
+    expect(input).toBeDisabled();
+    expect(input).toHaveProperty("placeholder", "Tag limit reached (10)");
+  });
+
+  it("normalizes exactly like board.normalize_tags", () => {
+    expect(normalizeClientTags([" evals ", "evals", "", "rag"])).toEqual([
+      "evals",
+      "rag",
+    ]);
+    expect(normalizeClientTags(["x".repeat(50)])).toEqual(["x".repeat(40)]);
+    // The wire contract is strings — non-strings are dropped, never coerced
+    // into phantom tags like "null".
+    expect(normalizeClientTags(["a", null, 7])).toEqual(["a"]);
+    expect(normalizeClientTags(Array.from({ length: 15 }, (_, i) => `t${i}`))).toHaveLength(10);
   });
 });
 
