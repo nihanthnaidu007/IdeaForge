@@ -182,6 +182,12 @@ const Dashboard = () => {
   // The research that produced the current ideas: variants and insight cards
   // carry it forward so generation stays grounded in the same evidence.
   const lastResearchRef = useRef({ trends: [], researched_at: null });
+  // Trend Radar surface state: the trends the last research run caught (the
+  // per-trend forge scopes to one cached row via trend_ids), which trend is
+  // forging, and the last per-trend forge failure ({ error, trendId }).
+  const [trends, setTrends] = useState([]);
+  const [forgingTrendId, setForgingTrendId] = useState(null);
+  const [forgeError, setForgeError] = useState(null);
 
   // Save-time tag suggestions (spec Tag completion): the board's existing tag
   // set powers the autocomplete so saves extend one consistent set. A failed
@@ -221,6 +227,7 @@ const Dashboard = () => {
   const generateIdeas = async () => {
     setLoading(true);
     setGenerateError(null);
+    setForgeError(null);
     setStaleAsOf(null);
     setStaleDismissed(false);
     setExpandedId(null);
@@ -241,6 +248,10 @@ const Dashboard = () => {
     try {
       // Step 1: live trend research (Tavily)
       const research = await api.post("/research", { niche, tone: tone.toLowerCase() });
+      // The research rows themselves, trend cards onward (spec Trend Radar
+      // surface): guarded against a malformed payload — an unarray renders
+      // as no list, never a crash or a fabricated row.
+      setTrends(Array.isArray(research.raw_trends) ? research.raw_trends : []);
       // Kept for downstream variant + insight-card generation: the same
       // evidence grounds every later call on this dashboard run.
       lastResearchRef.current = {
@@ -287,6 +298,61 @@ const Dashboard = () => {
       setScanningText("");
       setScanningSub("");
       setLoading(false);
+    }
+  };
+
+  // Per-trend forge (spec Trend Radar surface): scope generation to ONE
+  // server-cached trend via trend_ids — no re-search, no extra Tavily
+  // spend, same single model call otherwise. A typed 404 (TRENDS_NOT_FOUND:
+  // unknown, expired, or not-owned id) surfaces as an honest inline error
+  // wired to a fresh research run — never a silent fallback to unscoped
+  // forging. Key-issue failures still render the full Settings-routing card.
+  const forgeFromTrend = async (trend) => {
+    if (!trend?.id || forgingTrendId || loading) return;
+    setForgingTrendId(trend.id);
+    setForgeError(null);
+    setGenerateError(null);
+    setStaleAsOf(null);
+    setStaleDismissed(false);
+    setExpandedId(null);
+    setSelectedIdea(null);
+    setSelectedFormat(null);
+    setSelectedHookId(null);
+    setGeneratedPost("");
+    setPickedIndex(null);
+    setVariantSet(null);
+    setVariantsError(null);
+    setInsights({});
+    try {
+      const data = await api.post("/generate-ideas", {
+        trend_ids: [trend.id],
+        niche,
+        tone: tone.toLowerCase(),
+      });
+      // The ideas were forged from this one trend — later insight cards and
+      // variants ground in the same evidence, not the full trend set.
+      lastResearchRef.current = {
+        trends: [trend],
+        researched_at: lastResearchRef.current.researched_at,
+      };
+      // The hook source gate reads the context the ideas actually came from.
+      setHasSourcedTrends(Boolean(trend?.url || trend?.source));
+      // Guard the response shape: a malformed payload renders as an empty
+      // honest state, never as a runtime crash or fabricated content.
+      setIdeas(Array.isArray(data.ideas) ? data.ideas : []);
+      setLastRunAt(new Date().toISOString());
+      toast.success("Ideas forged");
+    } catch (error) {
+      if (isKeyIssueError(error)) {
+        // Only Settings can fix these — the honest card renders even with
+        // older ideas on screen (UI pack §3.1: one action per state).
+        setGenerateError(error);
+      } else {
+        setForgeError({ error, trendId: trend.id });
+      }
+      toast.error(error.message);
+    } finally {
+      setForgingTrendId(null);
     }
   };
 
@@ -608,6 +674,10 @@ const Dashboard = () => {
             scanningSub={scanningSub}
             costHint={researchHint}
             onGenerate={generateIdeas}
+            trends={trends}
+            forgingTrendId={forgingTrendId}
+            forgeError={forgeError}
+            onForgeFromTrend={forgeFromTrend}
           />
 
           {/* §3.1 stale-data banner: old data stays after a failed refresh,
