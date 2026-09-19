@@ -13,6 +13,9 @@ import PostPreview from "@/components/dashboard/PostPreview";
 import { EmptyState, ErrorState, StaleBanner } from "@/components/states/AsyncStates";
 import { api, isKeyIssueError } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
+import { useOnboarding } from "@/context/OnboardingContext";
+import WelcomeMat from "@/components/onboarding/WelcomeMat";
+import Stepper from "@/components/onboarding/OnboardingStepper";
 import { NICHES, TONES } from "@/lib/constants";
 import { Sparkles } from "lucide-react";
 
@@ -149,6 +152,14 @@ const forgeStrings = (error) => {
 
 const Dashboard = () => {
   const { user } = useAuth();
+  // Onboarding guide (Wave 1 §Onboarding): state lives on the server; the
+  // dashboard renders it and refreshes after the real events (a successful
+  // combined research→forge run) advance the checklist.
+  const {
+    matVisible,
+    stepperVisible,
+    refresh: refreshOnboarding,
+  } = useOnboarding();
   const navigate = useNavigate();
   const [niche, setNiche] = useState("AI");
   const [tone, setTone] = useState("Professional");
@@ -267,6 +278,10 @@ const Dashboard = () => {
       setIdeas(Array.isArray(data.ideas) ? data.ideas : []);
       setLastRunAt(new Date().toISOString());
       toast.success("Ideas forged");
+      // The run just completed real events (research + forge) — re-read the
+      // server's progress so the stepper reflects them. Fire-and-forget:
+      // the guide is secondary to the run (fail-open, like its backend hook).
+      refreshOnboarding();
     } catch (error) {
       // Key-issue states (missing key, auth, quota, bundled cap) are fixed in
       // Settings, not by retrying — their honest card must render even when
@@ -598,6 +613,12 @@ const Dashboard = () => {
       {/* Main Content */}
       <main id="main-content" className="pt-20 pb-12 px-6">
         <div className="max-w-4xl mx-auto">
+          {/* Onboarding guide (Wave 1 §Onboarding): the welcome mat on first
+              login, then the stepper as the guide continues. Both come from
+              the server's progress doc; a failed read shows neither, and the
+              existing empty states below remain the fallback. */}
+          {matVisible && <WelcomeMat />}
+          {stepperVisible && <Stepper />}
           <TrendRadar
             niche={niche}
             onNicheChange={setNiche}

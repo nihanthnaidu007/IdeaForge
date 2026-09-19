@@ -3,6 +3,7 @@ import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { OnboardingProvider } from "@/context/OnboardingContext";
 import NotFound from "@/pages/NotFound";
 
 // Route-level code splitting: each page becomes its own async chunk instead of
@@ -41,6 +42,9 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
+      {/* Onboarding state rides inside auth: progress loads when a user is
+          present and clears on sign-out (Wave 1 §Onboarding). */}
+      <OnboardingProvider>
       <div className="App min-h-screen bg-void">
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
@@ -78,6 +82,7 @@ function App() {
         </BrowserRouter>
         <Toaster position="bottom-right" richColors />
       </div>
+      </OnboardingProvider>
     </AuthProvider>
   );
 }
