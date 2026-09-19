@@ -1,0 +1,3 @@
+{"post_text": "The POC-to-production gap is the same three things, every time:\n\n1. Data quality surprises — the demo data was cleaner than reality.\n2. Missing eval infrastructure — nobody can say what \"better\" means.\n3. Unclear ownership — the model has no team, so it has no roadmap.\n\nClose those three and the gap closes with them.", "hook_pattern_id": "H01", "format": "listicle", "variant": "C",
+ "sourced_claims": [{"claim": "POC-to-production gap has three recurring causes", "source_url": "https://linkedin.com/pulse/e2e-poc-gap", "source_label": "linkedin.com"}],
+ "speculative_claims": [], "notes": "Stance: structural."}

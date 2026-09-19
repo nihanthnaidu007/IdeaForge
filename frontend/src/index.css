@@ -4,26 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Design tokens — single source of truth is frontend/tailwind.config.js
+   (colors.lime/void/deep/rating). Only the vars the scrollbar needs
+   live here; their values mirror the tailwind tokens and must be kept in
+   sync. The shadcn HSL layer further down mirrors the same brand tokens
+   (lime ≈ hsl(72 92% 62%), background ≈ void) for the ui primitives. */
 :root {
-  --bg-void: #050508;
-  --bg-deep: #08090f;
-  --bg-panel: #0c0e17;
-  --bg-card: #10121c;
-  --bg-card-hover: #141720;
-  --border-dim: #1c1f2e;
+  --bg-deep: #0a0a0c; /* tailwind colors.deep */
   --border-mid: #252840;
   --border-active: #4f52a0;
-  --text-primary: #e8eaf6;
-  --text-secondary: #8b8fa8;
-  --text-muted: #4a4d63;
-  --accent-primary: #D4F844;
-  --accent-glow: rgba(212, 248, 68, 0.15);
-  --green: #22c55e;
-  --green-glow: rgba(34, 197, 94, 0.12);
-  --amber: #f59e0b;
-  --amber-glow: rgba(245, 158, 11, 0.12);
-  --red: #ef4444;
-  --mono: #a5b4fc;
 }
 
 body {
@@ -31,8 +20,10 @@ body {
   font-family: 'DM Mono', monospace;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg-void);
-  color: var(--text-primary);
+  /* bg-background/text-foreground (shadcn base layer below) resolve to the
+     void palette from tailwind.config.js */
+  background-color: #050508; /* tailwind colors.void */
+  color: #e8eaf6;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
@@ -96,16 +87,6 @@ code {
   background: var(--border-active);
 }
 
-/* Staggered card animations */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fade-up {
-  animation: fadeUp 0.4s ease-out both;
-}
-
 /* Scanning pulse animation */
 @keyframes scanPulse {
   0%, 100% { opacity: 0.4; }
@@ -114,16 +95,6 @@ code {
 
 .animate-scan-pulse {
   animation: scanPulse 1.4s ease-in-out infinite;
-}
-
-/* Rating bar fill animation */
-@keyframes ratingFill {
-  from { width: 0%; }
-  to { width: var(--rating-width); }
-}
-
-.animate-rating-fill {
-  animation: ratingFill 0.6s ease-out 0.2s both;
 }
 
 /* Post reveal animation */
@@ -154,19 +125,6 @@ code {
     radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.02) 0%, transparent 50%);
 }
 
-/* Glow effects */
-.glow-green {
-  box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
-}
-
-.glow-amber {
-  box-shadow: 0 0 15px rgba(245, 158, 11, 0.15);
-}
-
-.glow-primary {
-  box-shadow: 0 0 20px rgba(212, 248, 68, 0.15);
-}
-
 /* Card hover effect */
 .card-hover {
   transition: all 0.3s ease;
@@ -175,10 +133,4 @@ code {
 .card-hover:hover {
   border-color: rgba(212, 248, 68, 0.3);
   box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 4px 20px -2px rgba(0,0,0,0.5);
-}
-
-@layer base {
-  [data-debug-wrapper="true"] {
-    display: contents !important;
-  }
 }

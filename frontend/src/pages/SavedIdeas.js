@@ -1,100 +1,101 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { toast } from "sonner";
-import { useAuth, API } from "../App";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
+import Navbar from "@/components/layout/Navbar";
+import SkipLink from "@/components/layout/SkipLink";
+import { EmptyState, ErrorState, SkeletonCardGrid } from "@/components/states/AsyncStates";
+import AiBadge from "@/components/common/AiBadge";
+import { api } from "@/api/client";
+import { useAuth } from "@/context/AuthContext";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../components/ui/select";
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "../components/ui/dialog";
+} from "@/components/ui/dialog";
 import {
-  Sparkles,
   Star,
   Bookmark,
   BookmarkCheck,
   Trash2,
   Copy,
   Search,
-  ArrowLeft,
   FileText,
   Calendar,
-  X,
 } from "lucide-react";
 
 const SavedIdeas = () => {
   const navigate = useNavigate();
-  const { token } = useAuth();
+  useAuth(); // auth guard is handled by ProtectedRoute
   const [ideas, setIdeas] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("loading"); // loading | error | ready
+  const [loadError, setLoadError] = useState(null);
   const [filter, setFilter] = useState("all");
   const [sortBy, setSortBy] = useState("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIdea, setSelectedIdea] = useState(null);
 
-  const headers = { Authorization: `Bearer ${token}` };
+  const fetchIdeas = useCallback(async () => {
+    setStatus("loading");
+    try {
+      const data = await api.get("/saved");
+      setIdeas(data);
+      setStatus("ready");
+    } catch (error) {
+      setLoadError(error);
+      setStatus("error");
+    }
+  }, []);
 
   useEffect(() => {
     fetchIdeas();
-  }, []);
-
-  const fetchIdeas = async () => {
-    try {
-      const res = await axios.get(`${API}/saved`, { headers });
-      setIdeas(res.data);
-    } catch (error) {
-      toast.error("Failed to load saved ideas");
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchIdeas]);
 
   const toggleBookmark = async (id) => {
     try {
-      const res = await axios.patch(`${API}/saved/${id}/bookmark`, {}, { headers });
-      setIdeas(ideas.map(idea => 
-        idea.id === id ? { ...idea, is_bookmarked: res.data.is_bookmarked } : idea
+      const data = await api.patch(`/saved/${id}/bookmark`, {});
+      setIdeas(ideas.map((idea) =>
+        idea.id === id ? { ...idea, is_bookmarked: data.is_bookmarked } : idea
       ));
-      toast.success(res.data.is_bookmarked ? "Bookmarked!" : "Bookmark removed");
+      toast.success(data.is_bookmarked ? "Bookmarked" : "Bookmark removed");
     } catch (error) {
-      toast.error("Failed to update bookmark");
+      toast.error(error.message);
     }
   };
 
   const deleteIdea = async (id) => {
     try {
-      await axios.delete(`${API}/saved/${id}`, { headers });
-      setIdeas(ideas.filter(idea => idea.id !== id));
+      await api.delete(`/saved/${id}`);
+      setIdeas(ideas.filter((idea) => idea.id !== id));
       toast.success("Idea deleted");
     } catch (error) {
-      toast.error("Failed to delete idea");
+      toast.error(error.message);
     }
   };
 
   const copyPost = (post) => {
     navigator.clipboard.writeText(post);
-    toast.success("Copied to clipboard!");
+    toast.success("Copied to clipboard");
   };
 
   // Filter and sort ideas
   const filteredIdeas = ideas
-    .filter(idea => {
+    .filter((idea) => {
       if (filter === "bookmarked") return idea.is_bookmarked;
       if (filter === "with-post") return idea.generated_post;
       return true;
     })
-    .filter(idea => 
+    .filter((idea) =>
       idea.topic_title.toLowerCase().includes(searchQuery.toLowerCase())
     )
     .sort((a, b) => {
@@ -106,27 +107,11 @@ const SavedIdeas = () => {
 
   return (
     <div className="min-h-screen bg-void">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-void/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate("/dashboard")}
-              data-testid="back-btn"
-              className="p-2 text-white/60 hover:text-white transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-lime" />
-              <span className="font-heading font-bold text-lg text-white">Saved Ideas</span>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <SkipLink />
+      <Navbar title="Saved Ideas" backTo="/dashboard" />
 
       {/* Main Content */}
-      <main className="pt-20 pb-12 px-6">
+      <main id="main-content" className="pt-20 pb-12 px-6">
         <div className="max-w-6xl mx-auto">
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-4 mb-8">
@@ -143,7 +128,7 @@ const SavedIdeas = () => {
                   className={`px-4 py-1.5 rounded-md text-sm transition-all ${
                     filter === f.id
                       ? "bg-lime text-void font-medium"
-                      : "text-white/60 hover:text-white"
+                      : "text-zinc-400 hover:text-white"
                   }`}
                 >
                   {f.label}
@@ -163,7 +148,7 @@ const SavedIdeas = () => {
             </Select>
 
             <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -174,26 +159,33 @@ const SavedIdeas = () => {
             </div>
           </div>
 
-          {/* Ideas Grid */}
-          {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-loading-pulse text-lime">Loading...</div>
-            </div>
+          {/* Ideas Grid — explicit loading / error / empty / ready states */}
+          {status === "loading" ? (
+            <SkeletonCardGrid testId="saved-ideas-skeleton" />
+          ) : status === "error" ? (
+            <ErrorState
+              error={loadError}
+              onRetry={fetchIdeas}
+              // §3.10 verbatim: bookmarks are safe; the read failed.
+              strings={{
+                headline: "Saved ideas didn't load.",
+                body: "Bookmarks are safe; the list read failed. Retry.",
+              }}
+            />
           ) : filteredIdeas.length === 0 ? (
-            <div className="text-center py-20">
-              <FileText className="w-16 h-16 text-white/10 mx-auto mb-4" />
-              <h3 className="font-heading text-xl text-white mb-2">No saved ideas yet</h3>
-              <p className="text-white/50 mb-6">
-                Generate your first idea on the dashboard.
-              </p>
+            <EmptyState
+              icon={FileText}
+              title="Nothing saved yet."
+              description="Bookmark an idea and it lands here for quick reach — the board remains the working view."
+            >
               <Button
                 onClick={() => navigate("/dashboard")}
                 data-testid="go-to-dashboard-btn"
                 className="bg-lime text-void hover:bg-lime-hover"
               >
-                Go to Dashboard
+                Go to Idea Forge
               </Button>
-            </div>
+            </EmptyState>
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
               {filteredIdeas.map((idea, index) => (
@@ -211,7 +203,7 @@ const SavedIdeas = () => {
                     <button
                       onClick={() => toggleBookmark(idea.id)}
                       data-testid={`bookmark-${idea.id}-btn`}
-                      className="text-white/40 hover:text-lime transition-colors"
+                      className="text-zinc-400 hover:text-lime transition-colors"
                     >
                       {idea.is_bookmarked ? (
                         <BookmarkCheck className="w-5 h-5 text-lime" />
@@ -237,10 +229,10 @@ const SavedIdeas = () => {
 
                   {/* Tags */}
                   <div className="flex flex-wrap gap-2 mb-3">
-                    <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-white/60">
+                    <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-zinc-400">
                       {idea.niche}
                     </span>
-                    <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-white/60 capitalize">
+                    <span className="px-2 py-0.5 rounded text-xs bg-white/5 text-zinc-400 capitalize">
                       {idea.tone}
                     </span>
                     {idea.generated_post && (
@@ -251,7 +243,7 @@ const SavedIdeas = () => {
                   </div>
 
                   {/* Date */}
-                  <div className="flex items-center gap-1 text-xs text-white/40 mb-3">
+                  <div className="flex items-center gap-1 text-xs text-zinc-400 mb-3">
                     <Calendar className="w-3 h-3" />
                     {new Date(idea.created_at).toLocaleDateString()}
                   </div>
@@ -273,7 +265,7 @@ const SavedIdeas = () => {
                       data-testid={`delete-${idea.id}-btn`}
                       size="sm"
                       variant="outline"
-                      className="border-white/10 text-white/60 hover:text-red-400 hover:border-red-400/30"
+                      className="border-white/10 text-zinc-400 hover:text-red-400 hover:border-red-400/30"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -298,10 +290,10 @@ const SavedIdeas = () => {
             <div className="space-y-4 mt-4">
               {/* Meta */}
               <div className="flex flex-wrap gap-2">
-                <span className="px-2 py-1 rounded text-xs bg-white/5 text-white/60">
+                <span className="px-2 py-1 rounded text-xs bg-white/5 text-zinc-400">
                   {selectedIdea.niche}
                 </span>
-                <span className="px-2 py-1 rounded text-xs bg-white/5 text-white/60 capitalize">
+                <span className="px-2 py-1 rounded text-xs bg-white/5 text-zinc-400 capitalize">
                   {selectedIdea.tone}
                 </span>
                 {selectedIdea.post_format && (
@@ -314,14 +306,14 @@ const SavedIdeas = () => {
               {/* Insights */}
               {selectedIdea.targeted_audience && (
                 <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-white/40">Target Audience</p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-400">Target Audience</p>
                   <p className="text-white/80 text-sm">{selectedIdea.targeted_audience}</p>
                 </div>
               )}
 
               {selectedIdea.why_it_matters && (
                 <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-white/40">Why It Matters</p>
+                  <p className="text-xs uppercase tracking-wider text-zinc-400">Why It Matters</p>
                   <p className="text-white/80 text-sm">{selectedIdea.why_it_matters}</p>
                 </div>
               )}
@@ -329,7 +321,10 @@ const SavedIdeas = () => {
               {/* Post */}
               {selectedIdea.generated_post && (
                 <div className="space-y-2">
-                  <p className="text-xs uppercase tracking-wider text-white/40">Generated Post</p>
+                  <div className="flex items-center gap-2">
+                    <AiBadge />
+                    <p className="text-xs uppercase tracking-wider text-zinc-400">Generated Post</p>
+                  </div>
                   <div className="bg-void rounded-lg p-4 border border-white/5">
                     <pre className="text-white/90 font-mono text-sm whitespace-pre-wrap">
                       {selectedIdea.generated_post}

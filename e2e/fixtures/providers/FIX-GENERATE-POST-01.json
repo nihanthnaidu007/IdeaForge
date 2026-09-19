@@ -1,0 +1,3 @@
+{"post_text": "RAG evals are the new unit tests. Here is the checklist we run before any agent ships:\n\n1. A golden set of real questions, versioned like code.\n2. An eval budget with a named owner.\n3. CI red on drift, not just on bugs.\n\nIt's cheaper than the incident.", "hook_pattern_id": "H01", "format": "how_to", "variant": "A",
+ "sourced_claims": [{"claim": "Teams gate CI on evals now", "source_url": "https://www.reddit.com/r/LocalLLaMA/comments/e2e_q1c/", "source_label": "reddit.com/r/LocalLLaMA"}],
+ "speculative_claims": [], "notes": "How-to checklist."}

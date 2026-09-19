@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, "release/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (ruff + pytest)
+    runs-on: ubuntu-latest
+    # Real-Mongo tier for the index/race integration tests (test_mongo_indexes.py
+    # skips itself when MONGO_TEST_URL is unset, so local runs stay fast).
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    env:
+      MONGO_TEST_URL: mongodb://localhost:27017
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install -r backend/requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check backend/app tests/
+
+      - name: Pytest (unit + integration)
+        run: pytest tests/ -q
+
+  frontend:
+    name: Frontend (scaffold gate + vitest + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fails on committed secrets or scaffold strings outside
+      # sibling-PR-owned paths. Runs first so violations surface in seconds.
+      - name: Secrets & scaffold grep gate
+        run: bash scripts/ci/scaffold-gate.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+        working-directory: frontend
+
+      - name: Test (vitest)
+        run: npm test
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+      # The Vite entry must ship clean and split: zero Emergent/PostHog
+      # strings in the built output, and more than one JS chunk (route-level
+      # code splitting — no monolith).
+      - name: Dist hygiene gate
+        run: |
+          if grep -riE "emergent|posthog" frontend/dist; then
+            echo "FAIL: dist/ contains Emergent/PostHog strings"
+            exit 1
+          fi
+          js_count=$(find frontend/dist -name '*.js' | wc -l)
+          if [ "$js_count" -lt 2 ]; then
+            echo "FAIL: expected route-split chunks in dist/, found $js_count JS file(s)"
+            exit 1
+          fi
+          echo "dist/ clean ($js_count JS chunks)."
+
+  docker:
+    name: Docker images (multi-stage, non-root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build api image
+        run: docker build -t ideaforge-api:ci ./backend
+
+      - name: Build web image
+        run: docker build -t ideaforge-web:ci ./frontend
+
+  compose-smoke:
+    name: Compose smoke (boot, health, auth, non-root)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run compose smoke check
+        run: bash scripts/ci/compose-smoke.sh
+
+  e2e:
+    name: E2E (Playwright, mocked providers)
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install backend runtime
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Build frontend (previewed production build)
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run E2E suite (journeys + failures + critical path)
+        working-directory: e2e
+        run: npx playwright test
+        env:
+          CI: "true"
+      - name: Run app-level rate-limit project (F03b)
+        working-directory: e2e
+        run: npx playwright test -c playwright.ratelimit.config.ts
+        env:
+          CI: "true"
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 5
+          if-no-files-found: warn

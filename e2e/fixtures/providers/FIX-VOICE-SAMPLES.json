@@ -1,0 +1,3 @@
+["RAG evals are the new unit tests. 40 golden questions, one weekend, CI red on drift ever since. Nobody asks about eval budgets until the first hallucination lands in a customer meeting — then they ask. That's backwards. Ask me about the spreadsheet.",
+ "Agent budgets are backwards. Teams spend on model calls before they spend on measurement — that's backwards. We flipped it: measurement first, calls second. The bill dropped 30% in a month. Nobody asks about measurement until the incident.",
+ "The POC-to-production gap is the same three things every time: data quality, eval, ownership. Ask me about ownership — that's the one nobody budgets for. That's backwards too."]

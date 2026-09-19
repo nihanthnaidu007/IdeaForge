@@ -1,0 +1,13 @@
+{
+  "trends": [
+    { "index": 0, "why_now": "Engineers who skipped golden sets are hitting the failures in production right now — the thread is the pushback, not a summary.", "post_worthiness": 9, "score_reason": "Concrete pain with a debate framing that invites replies." },
+    { "index": 1, "why_now": "The model-swap drift broke this team's own CI, and the two-weekend golden-set rebuild is recent enough to copy.", "post_worthiness": 8, "score_reason": "A measurable before/after with a timeframe readers can act on this sprint." },
+    { "index": 2, "why_now": "Three open-source harnesses just got compared on the same golden set, so the tooling decision is fresh, not settled.", "post_worthiness": 7, "score_reason": "Practical comparison with a save-worthy decision rule: CI integration beats scoring." },
+    { "index": 3, "why_now": "Teams are setting agent budgets now and spending on model calls before measurement — the reversal is the argument.", "post_worthiness": 8, "score_reason": "Contrarian angle aimed at a budget decision every team is making this quarter." },
+    { "index": 4, "why_now": "Week three is when current demos meet real inputs — the audience is living this failure mode right now.", "post_worthiness": 7, "score_reason": "Named, time-boxed failure with a boring fix readers can apply immediately." },
+    { "index": 5, "why_now": "Unscored changes keep compounding while teams ship, and the debt framing names a cost they already feel.", "post_worthiness": 6, "score_reason": "Familiar metaphor with a clear cost story, though no fresh event drives it." },
+    { "index": 6, "why_now": "Practitioners are openly asking what eval rigor pays back, and the spreadsheet answers with one avoided incident.", "post_worthiness": 8, "score_reason": "A live question in the niche with a one-incident payback proof." },
+    { "index": 7, "why_now": "POCs are dying on the same three gaps — data quality, eval, ownership — and 2026 budgets decide who fixes them.", "post_worthiness": 7, "score_reason": "Structural gap analysis that maps to this year's planning conversations." },
+    { "index": 8, "why_now": "Copilot rolls continue across teams, and the intern-without-memory read punctures the teammate framing mid-adoption.", "post_worthiness": 6, "score_reason": "Contrarian stance on an ongoing rollout; lighter urgency than the rest." }
+  ]
+}

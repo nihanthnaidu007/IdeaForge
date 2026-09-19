@@ -1,0 +1,71 @@
+{
+  "auth": {
+    "register": "/api/auth/register",
+    "login": "/api/auth/login",
+    "me": "/api/auth/me",
+    "refresh": "/api/auth/refresh",
+    "logout": "/api/auth/logout"
+  },
+  "research": {
+    "run": "/api/research"
+  },
+  "onboarding": {
+    "progress": "/api/onboarding"
+  },
+  "ideas": {
+    "generate": "/api/generate-ideas",
+    "insights": "/api/idea-insights"
+  },
+  "posts": {
+    "generateVariants": "/api/generate-variants",
+    "generate": "/api/generate-post",
+    "regenerate": "/api/regenerate-post",
+    "tweak": "/api/tweak-post",
+    "tweakVariant": "/api/tweak-variant",
+    "swapHook": "/api/swap-hook",
+    "costEstimate": "/api/cost-estimate"
+  },
+  "saved": {
+    "save": "/api/save-idea",
+    "list": "/api/saved",
+    "remove": "/api/saved",
+    "bookmark": "/api/saved"
+  },
+  "preferences": {
+    "get": "/api/preferences",
+    "put": "/api/preferences",
+    "deleteKey": "/api/keys",
+    "testKey": "/api/keys"
+  },
+  "voice": {
+    "extract": "/api/voice/profile",
+    "profile": "/api/voice/profile",
+    "versions": "/api/voice/profile/versions"
+  },
+  "hooks": {
+    "list": "/api/hooks"
+  },
+  "board": {
+    "list": "/api/board",
+    "tags": "/api/board/tags",
+    "transition": "/api/board",
+    "tagsPatch": "/api/board",
+    "exportMd": "/api/export/board.md",
+    "exportCsv": "/api/export/board.csv"
+  },
+  "queue": {
+    "list": "/api/queue",
+    "schedule": "/api/queue/{idea_id}/schedule",
+    "notifications": "/api/queue/notifications",
+    "exportIcs": "/api/queue/calendar.ics"
+  },
+  "analytics": {
+    "summary": "/api/analytics/summary",
+    "metrics": "/api/analytics/posts",
+    "compare": "/api/analytics/compare"
+  },
+  "health": {
+    "live": "/health/live",
+    "ready": "/health/ready"
+  }
+}

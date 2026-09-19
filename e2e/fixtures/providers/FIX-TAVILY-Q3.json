@@ -1,0 +1,5 @@
+{"query": "trending AI topics LinkedIn", "follow_up_questions": [], "answer": null,
+ "results": [
+  {"title": "LinkedIn practitioners are asking about eval ROI", "url": "https://linkedin.com/pulse/e2e-eval-roi", "content": "Ask me about eval ROI and I will show you the spreadsheet: one avoided incident pays for a year of measurement.", "score": 0.9611, "published_date": "2026-09-17"},
+  {"title": "The POC-to-production gap in 2026", "url": "https://linkedin.com/pulse/e2e-poc-gap", "content": "POC to production is where AI projects die. The gap is always the same three things: data quality, eval, ownership.", "score": 0.9388, "published_date": "2026-09-16"},
+  {"title": "Contrarian: your copilot is not a teammate yet", "url": "https://linkedin.com/pulse/e2e-copilot-contrarian", "content": "Your copilot is not a teammate yet. It is a fast intern with no memory. Design accordingly.", "score": 0.9033, "published_date": "2026-09-15"}]}
