@@ -226,7 +226,7 @@ export default function ContentBoard({ onPreview, onSchedule, refreshKey, onExpo
       <EmptyState
         icon={LayoutGrid}
         title="The board is where ideas grow up."
-        description="Forge ideas in Idea Forge, save the good ones, and they land here in Inbox — tagged, searchable, and ready to drag toward Ready."
+        description="Forge ideas in Idea Forge, save the good ones, and they land here in Inbox — tagged, searchable, and ready to move toward Ready."
         testId="board-empty"
       />
     );

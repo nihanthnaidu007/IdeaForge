@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import Navbar from "@/components/layout/Navbar";
 import SkipLink from "@/components/layout/SkipLink";
 import TrendRadar from "@/components/dashboard/TrendRadar";
 import IdeaCard from "@/components/dashboard/IdeaCard";
 import VariantCompare, { FormatPicker } from "@/components/dashboard/VariantCompare";
+import LinkedInPreviewPane from "@/components/board/LinkedInPreviewPane";
+import { copyGateFor } from "@/lib/linkedinLint";
 import HookPicker from "@/components/dashboard/HookPicker";
 import PostPreview from "@/components/dashboard/PostPreview";
 import { EmptyState, ErrorState, StaleBanner } from "@/components/states/AsyncStates";
 import { api, isKeyIssueError } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
+import { NICHES, TONES } from "@/lib/constants";
 import { Sparkles } from "lucide-react";
 
 // Error-card strings for the combined research→forge flow, per the UI & Copy
@@ -23,6 +27,20 @@ const PROVIDER_BILLING_URLS = {
   anthropic: "https://console.anthropic.com",
 };
 const PROVIDER_NAMES = { tavily: "Tavily", openai: "OpenAI", anthropic: "Anthropic" };
+
+// Saved defaults resolved against the shipped option lists (Honesty bundle:
+// the Settings promise "research scopes to your niche; drafts start from your
+// tone" holds across sessions). A stored value the selectors can't render is
+// ignored rather than guessed at; tones match case-insensitively because the
+// backend stores them lowercase ("professional") while the UI list is
+// display-cased. Pure so the load rule is testable without the page.
+export const resolveSavedDefaults = (prefs) => ({
+  niche: NICHES.includes(prefs?.default_niche) ? prefs.default_niche : null,
+  tone:
+    TONES.find(
+      (t) => t.toLowerCase() === (prefs?.default_tone ?? "").toLowerCase(),
+    ) ?? null,
+});
 
 const forgeStrings = (error) => {
   if (!error) return undefined;
@@ -131,6 +149,7 @@ const forgeStrings = (error) => {
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [niche, setNiche] = useState("AI");
   const [tone, setTone] = useState("Professional");
   const [loading, setLoading] = useState(false);
@@ -178,6 +197,26 @@ const Dashboard = () => {
   useEffect(() => {
     refreshTagSuggestions();
   }, [refreshTagSuggestions]);
+
+  // Open on the saved defaults (Honesty bundle): one read on mount, applied
+  // only where the value is renderable by the selectors. A failed read is
+  // logged and the honest defaults stay — preferences are a nicety, never a
+  // blocker for the first run.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get("/preferences")
+      .then((prefs) => {
+        if (cancelled) return;
+        const saved = resolveSavedDefaults(prefs);
+        if (saved.niche) setNiche(saved.niche);
+        if (saved.tone) setTone(saved.tone);
+      })
+      .catch((err) => console.error("Preference load failed:", err));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const generateIdeas = async () => {
     setLoading(true);
@@ -420,9 +459,31 @@ const Dashboard = () => {
     }
   };
 
-  const copyPost = () => {
-    navigator.clipboard.writeText(generatedPost);
-    toast.success("Copied to clipboard");
+  // The copy path runs the same /preview/linkedin lint the Board preview
+  // runs (fix 7): the copy button is no longer the exit that skips the
+  // formatting checks. The gate's decision owns the toast; the clipboard is
+  // the only side effect after it allows the copy.
+  const copyPost = async () => {
+    let result = null;
+    try {
+      result = await api.post("/preview/linkedin", { text: generatedPost });
+    } catch {
+      // Fail closed: no verdict, no copy — silently skipping the promised
+      // checks is the exact drift this gate kills.
+      result = null;
+    }
+    const gate = copyGateFor(result);
+    if (!gate.allowed) {
+      toast.error(gate.message);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(generatedPost);
+    } catch {
+      toast.error("Copy failed — select the text and copy it manually.");
+      return;
+    }
+    toast.success(gate.message);
   };
 
   // Cost hints (§6 BYOK rule): one batched estimate for insight cards when a
@@ -513,7 +574,11 @@ const Dashboard = () => {
         tags,
       });
       refreshTagSuggestions();
-      toast.success("Idea saved");
+      // The forge→board handoff: the toast carries the navigation, so the
+      // save stops being a dead end.
+      toast.success("Idea saved", {
+        action: { label: "Open Board", onClick: () => navigate("/board") },
+      });
     } catch (error) {
       toast.error(error.message);
     }
@@ -669,6 +734,13 @@ const Dashboard = () => {
               onRegenerate={regenerateVariants}
               onSave={() => saveIdea(selectedIdea, selectedIdea.index, true)}
             />
+          )}
+
+          {/* §6.1 LinkedIn preview + linter on the Dashboard exit (fix 7):
+              the same pane the Board preview uses — live checks under the
+              draft, so the copy gate's verdict is never a mystery. */}
+          {pickedIndex != null && generatedPost && (
+            <LinkedInPreviewPane text={generatedPost} />
           )}
 
           {/* §6.2 Hook Picker (swap mode): on a live draft the picker swaps

@@ -20,6 +20,34 @@ const localInputValue = (date) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+// Snooze durations (Honesty bundle): the backend's hours parameter accepts
+// 1–72, so the UI offers the three honest choices instead of hardcoding 1h.
+export const SNOOZE_OPTIONS = [
+  { hours: 1, label: "1h" },
+  { hours: 4, label: "4h" },
+  { hours: 24, label: "24h" },
+];
+
+// The three snooze buttons, shared by the due-reminder card and the
+// scheduled rows — same options, same order, one place to change.
+const SnoozeGroup = ({ ideaId, onSnooze }) => (
+  <span role="group" aria-label={`Snooze the reminder for ${ideaId}`} className="flex items-center gap-1">
+    <AlarmClock className="w-3 h-3 text-zinc-500" aria-hidden="true" />
+    {SNOOZE_OPTIONS.map(({ hours, label }) => (
+      <Button
+        key={hours}
+        variant="outline"
+        onClick={() => onSnooze(hours)}
+        data-testid={`snooze-${hours}h-btn-${ideaId}`}
+        aria-label={`Snooze ${hours} hour${hours > 1 ? "s" : ""}`}
+        className="h-7 px-2 text-xs border-white/10 text-white hover:bg-white/5"
+      >
+        {label}
+      </Button>
+    ))}
+  </span>
+);
+
 export function ScheduleForm({ ideas, preselected, onScheduled, queueRefresh }) {
   const [ideaId, setIdeaId] = useState(preselected?.id ?? "");
   const [when, setWhen] = useState(() => localInputValue(quickPick("tomorrow")));
@@ -200,9 +228,9 @@ export default function DraftQueue({ refreshKey, preselected, onPreselectedConsu
     }
   };
 
-  const snooze = async (idea) => {
+  const snooze = async (idea, hours) => {
     try {
-      await api.post(`/queue/${idea.id}/snooze`, { hours: 1 });
+      await api.post(`/queue/${idea.id}/snooze`, { hours });
       load();
     } catch {
       toast.error("Couldn't snooze that — the reminder is unchanged. Try again.");
@@ -276,15 +304,7 @@ export default function DraftQueue({ refreshKey, preselected, onPreselectedConsu
                 >
                   Open preview
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => snooze({ id: n.idea_id })}
-                  data-testid={`reminder-snooze-btn-${n.idea_id}`}
-                  className="h-7 px-2 text-xs border-white/10 text-white hover:bg-white/5"
-                >
-                  <AlarmClock className="w-3 h-3 mr-1" aria-hidden="true" />
-                  Snooze 1h
-                </Button>
+                <SnoozeGroup ideaId={n.idea_id} onSnooze={(hours) => snooze({ id: n.idea_id }, hours)} />
                 <Button
                   variant="ghost"
                   onClick={() => markRead(n)}
@@ -342,15 +362,7 @@ export default function DraftQueue({ refreshKey, preselected, onPreselectedConsu
                     >
                       Open preview
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => snooze(idea)}
-                      data-testid={`queue-snooze-btn-${idea.id}`}
-                      className="h-7 px-2 text-xs border-white/10 text-white hover:bg-white/5"
-                    >
-                      <AlarmClock className="w-3 h-3 mr-1" aria-hidden="true" />
-                      Snooze 1h
-                    </Button>
+                    <SnoozeGroup ideaId={idea.id} onSnooze={(hours) => snooze(idea, hours)} />
                     <Button
                       variant="outline"
                       onClick={() => unschedule(idea)}

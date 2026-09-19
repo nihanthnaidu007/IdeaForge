@@ -34,7 +34,7 @@ const FEATURES = [
   },
   {
     icon: KeyRound,
-    eyebrow: "Byok Pricing",
+    eyebrow: "BYOK Pricing",
     title: "Your keys. Your bill. No subscription.",
     body: "IdeaForge charges no AI subscription. Research and drafting run on your OpenAI, Anthropic, and Tavily keys, billed only by those providers.",
     proof: "Connect your keys once; every draft is created inside your own provider account.",
@@ -263,10 +263,13 @@ const LandingPage = () => {
             What it costs.
           </motion.h2>
           <p className="text-zinc-400 mb-4 max-w-2xl">
-            There is no IdeaForge subscription. You bring your own API keys — OpenAI or Anthropic
-            for drafting, Tavily for research — and the providers bill you directly for what you
-            use. A typical month of drafting costs less than a coffee, on your plan, with no
-            markup.
+            IdeaForge charges no subscription and sells no credits. You bring your own API keys —
+            OpenAI or Anthropic for drafting, Tavily for research — and your only AI cost is the
+            usage you actually run, at provider price with no markup.
+          </p>
+          <p className="text-zinc-400 mb-4 max-w-2xl">
+            For scale: the AI-capable LinkedIn tools this replaces charge $20–199/month. Taplio's
+            cheapest AI tier is $69/month. Here, $69 of provider spend buys exactly $69 of AI.
           </p>
           <p className="text-zinc-400 max-w-2xl">
             IdeaForge itself is self-hosted and open source: the cost of the product is the time it

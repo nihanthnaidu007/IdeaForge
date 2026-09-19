@@ -23,12 +23,11 @@ const TrendRadar = ({ niche, onNicheChange, tone, onToneChange, loading, scannin
     className="glass-card rounded-xl p-8 mb-8"
     aria-busy={loading}
   >
-    <h2 className="font-heading text-2xl font-bold text-white mb-2">
-      What's trending in Tech & AI right now?
+    <h2 className="font-heading text-2xl font-bold text-white mb-2" data-testid="trend-radar-heading">
+      {`What's trending in ${niche} right now?`}
     </h2>
     <p className="text-zinc-400 mb-6">
-      Run research to pull what's moving in Tech & AI right now. Every trend comes with its real
-      source URL, a freshness label, and a one-line “why now”.
+      {`Run research to pull what's moving in ${niche} right now. Every trend comes with its real source URL, a freshness label, and a one-line “why now”.`}
     </p>
 
     <div className="flex flex-wrap items-center gap-4 mb-6">

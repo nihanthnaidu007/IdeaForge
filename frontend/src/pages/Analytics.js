@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Activity, BarChart3, ClipboardList, Flame, TrendingUp } from "lucide-react";
+import { Activity, BarChart3, ClipboardList, Flame, Trash2, TrendingUp } from "lucide-react";
 
 // Honest analytics. Every number here is derived from one of two sources the
 // user controls: their own usage events (what they did in IdeaForge) or their
@@ -130,6 +130,97 @@ const CountsCard = ({ byEvent }) => {
   );
 };
 
+// Logged results for the selected idea (Honesty bundle fix 6): the read half
+// is the previously unwired GET /analytics/posts/{id}/metrics route, and each
+// entry deletes itself via DELETE /analytics/posts/{id}/metrics/{metric_id}.
+// A wrong pasted number becomes correctable — delete it, log the correction,
+// and the summary reloads so the totals stop counting a disowned number.
+const LoggedMetrics = ({ ideaId, refreshKey, onDeleted }) => {
+  const [entries, setEntries] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoadError(false);
+    try {
+      const list = await api.get(`/analytics/posts/${ideaId}/metrics`);
+      setEntries(Array.isArray(list) ? list : []);
+    } catch {
+      setLoadError(true);
+    }
+  }, [ideaId]);
+
+  useEffect(() => {
+    if (!ideaId) {
+      setEntries(null);
+      setLoadError(false);
+      return;
+    }
+    load();
+  }, [ideaId, refreshKey, load]);
+
+  if (!ideaId) return null;
+
+  const remove = async (entryId) => {
+    try {
+      await api.delete(`/analytics/posts/${ideaId}/metrics/${entryId}`);
+      setEntries((prev) => (prev ?? []).filter((e) => e.id !== entryId));
+      onDeleted();
+    } catch {
+      toast.error("Couldn't delete that entry — it's still logged. Try again.");
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div data-testid="logged-metrics-error" className="mt-4 text-sm text-zinc-400">
+        Logged results didn't load — nothing was changed.{" "}
+        <Button variant="outline" onClick={load}
+          className="h-7 px-2 text-xs border-white/10 text-white hover:bg-white/5">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!entries) {
+    return <p className="font-mono text-xs text-zinc-400 mt-4">Loading logged results…</p>;
+  }
+
+  if (entries.length === 0) {
+    return (
+      <p data-testid="logged-metrics-empty" className="text-sm text-zinc-400 mt-4">
+        No results logged for this post yet — the first entry you save shows up here.
+      </p>
+    );
+  }
+
+  return (
+    <div data-testid="logged-metrics" className="mt-4">
+      <p className="text-sm text-zinc-300 mb-2">
+        Logged results for this post — delete a wrong entry, then log the correction:
+      </p>
+      <ul className="space-y-2">
+        {entries.map((entry) => (
+          <li key={entry.id} data-testid={`logged-metric-${entry.id}`}
+            className="flex flex-wrap items-center gap-3 border border-white/10 rounded-lg px-3 py-2 text-sm">
+            <span className="font-mono text-xs text-zinc-400">{entry.posted_on}</span>
+            <span className="font-mono text-white">{entry.impressions} impressions</span>
+            <span className="font-mono text-zinc-300">{entry.reactions} reactions</span>
+            <span className="font-mono text-zinc-300">{entry.comments} comments</span>
+            <span className="font-mono text-zinc-300">{entry.reposts} reposts</span>
+            <Button type="button" variant="outline" onClick={() => remove(entry.id)}
+              data-testid={`logged-metric-delete-${entry.id}`}
+              className="ml-auto h-7 px-2 text-xs border-white/10 text-red-300 hover:bg-white/5">
+              <Trash2 className="w-3 h-3 mr-1" aria-hidden="true" />
+              Delete
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 // The manual-entry form: numbers the user pasted from their own LinkedIn
 // dashboard. Client validation mirrors the backend (non-negative integers);
 // both surfaces render the same craft-pack sentence on a violation.
@@ -139,6 +230,9 @@ const MetricsForm = ({ ideas, onLogged, formRef }) => {
   const [values, setValues] = useState({ impressions: "", reactions: "", comments: "", reposts: "" });
   const [fieldError, setFieldError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  // Bumped after each successful log so the logged list re-reads and shows
+  // the new entry without a full-page refresh.
+  const [loggedKey, setLoggedKey] = useState(0);
 
   const setField = (field) => (e) => {
     const raw = e.target.value;
@@ -167,6 +261,7 @@ const MetricsForm = ({ ideas, onLogged, formRef }) => {
       const idea = ideas.find((i) => i.id === ideaId);
       toast.success(`Results logged for ${idea?.topic_title ?? "your post"}.`);
       setValues({ impressions: "", reactions: "", comments: "", reposts: "" });
+      setLoggedKey((k) => k + 1);
       onLogged();
     } catch (error) {
       toast.error(error?.message ?? "Logging failed — nothing was saved.");
@@ -234,6 +329,7 @@ const MetricsForm = ({ ideas, onLogged, formRef }) => {
         className="mt-4 bg-lime text-void hover:bg-lime-hover" data-testid="metrics-submit-btn">
         {submitting ? "Logging…" : "Log results"}
       </Button>
+      <LoggedMetrics ideaId={ideaId} refreshKey={loggedKey} onDeleted={onLogged} />
     </form>
   );
 };
