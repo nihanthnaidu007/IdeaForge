@@ -24,7 +24,7 @@ const EXPORT_PATHS = {
 
 // Authenticated file download: the token can't ride an <a href>, so fetch the
 // bytes through the api client and hand them to the browser as an object URL.
-export async function downloadExport(kind) {
+async function downloadExport(kind) {
   const path = EXPORT_PATHS[kind];
   if (!path) return;
   try {

@@ -7,8 +7,6 @@
 # a real-shaped key under e2e/ is a leak this gate must catch.
 #
 # Scaffold-string ALLOWED paths still carry references on purpose:
-#   frontend/src/                                        -> app-cleanup PR
-#                                                           (Universal Key copy in Dashboard/Settings)
 #   .github/workflows/ci.yml                             -> self-referential: its dist-hygiene
 #                                                           step greps for the same patterns
 # scripts/ci/scaffold-gate.sh, tests/test_smoke.py      -> self-referential: these two files
@@ -21,9 +19,8 @@ cd "$(dirname "$0")/../.."
 
 SECRET_RE='tvly-[A-Za-z0-9_-]{16,}|sk-emergent-[A-Za-z0-9]+|sk-ant-[A-Za-z0-9_-]{16,}|sk-proj-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{48}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|xox[baprs]-[A-Za-z0-9-]{10,}|phc_[A-Za-z0-9]{20,}'
 SCAFFOLD_RE='emergent|Universal Key'
-# Self-referential/sibling-owned: these quote the patterns they define or are
-# owned by sibling rebuild PRs.
-SECRET_ALLOW_RE='^\.?/?(frontend/src/|\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
+# Self-referential: these files quote the patterns they define.
+SECRET_ALLOW_RE='^\.?/?(\.github/workflows/ci\.yml|scripts/ci/scaffold-gate\.sh|tests/test_smoke\.py)'
 SCAFFOLD_ALLOW_RE="${SECRET_ALLOW_RE}"
 
 scan() {

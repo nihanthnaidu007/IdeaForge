@@ -4,8 +4,6 @@
 // moves with INVALID_TRANSITION; this mirror just keeps invalid buttons off
 // the cards so the user never sees a 400).
 
-export const BOARD_STATUSES = ["inbox", "forged", "drafting", "ready"];
-
 // Column presentation. `hint` is the column-empty drop-target line (UI pack
 // honest-empty pattern: name the state, promise nothing).
 export const STATUS_COLUMNS = [
