@@ -27,6 +27,7 @@ from app.deps import (
 )
 from app.models.research import ResearchRequest
 from app.services.llm.provider import resolve_user_key
+from app.services.onboarding import STEP_FIRST_SWEEP, advance_on_event
 from app.services.research import TavilyResearchService
 from app.services.trend_cache import cache_trends
 from app.services.trend_enrichment import enrich_trends, normalize_trend_row
@@ -92,4 +93,7 @@ async def research_trends(
         db, current_user["user_id"], RESEARCH_RUN,
         provider="tavily", count=len(raw_trends),
     )
+    # Onboarding auto-advance (spec §Onboarding): a successful research run IS
+    # the first-sweep event — the checklist mirrors reality. Fail-open, logged.
+    await advance_on_event(db, current_user["user_id"], STEP_FIRST_SWEEP)
     return {"raw_trends": trends, "niche": data.niche, "tone": data.tone}

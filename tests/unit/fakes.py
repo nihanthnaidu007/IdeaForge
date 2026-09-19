@@ -209,7 +209,7 @@ class FakeCollection:
         return type("DeleteResult", (), {"deleted_count": deleted})()
 
     async def update_one(
-        self, query: dict[str, Any], update: dict[str, Any]
+        self, query: dict[str, Any], update: dict[str, Any], *, upsert: bool = False
     ) -> Any:
         matched = 0
         modified = 0
@@ -225,6 +225,14 @@ class FakeCollection:
                 # no-op); tests lean on that honesty for 404s.
                 if self.docs[key] != before:
                     modified += 1
+        if matched == 0 and upsert:
+            # MongoDB upsert: seed the new document from the query's equality
+            # fields, then apply the update ($setOnInsert fills the rest).
+            # insert_one keeps the unique-index honesty for free.
+            seed = {k: v for k, v in query.items() if not isinstance(v, dict)}
+            self._apply_update(seed, update)
+            await self.insert_one(seed)
+            matched = 1
         return type(
             "UpdateResult", (), {"modified_count": modified, "matched_count": matched}
         )()
@@ -296,6 +304,9 @@ class FakeDatabase:
         # Trend cache (Trend Radar): per-trend forge looks rows up by the
         # server-assigned id the research route returned.
         self.trend_cache = FakeCollection(unique_fields=("id",))
+        # Onboarding progress (Wave 1): one doc per user; explicit attribute
+        # for parity with the real schema, like usage_counters.
+        self.onboarding_progress = FakeCollection(unique_fields=("user_id",))
         self._mongo_ok = mongo_ok
         self.commands_run: list[Any] = []
 

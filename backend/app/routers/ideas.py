@@ -33,6 +33,7 @@ from app.services.llm.provider import (
     last_usage_of,
     parse_json_output,
 )
+from app.services.onboarding import STEP_FIRST_FORGE, advance_on_event
 from app.services.trend_cache import load_trends_for_forge
 from app.services.usage import (
     IDEAS_GENERATED,
@@ -106,6 +107,9 @@ async def generate_ideas(
         tokens_in=usage.tokens_in if usage else None,
         tokens_out=usage.tokens_out if usage else None,
     )
+    # Onboarding auto-advance (spec §Onboarding): a successful forge IS the
+    # first-forge event — the checklist mirrors reality. Fail-open, logged.
+    await advance_on_event(db, current_user["user_id"], STEP_FIRST_FORGE)
     cost_hint = build_cost_hint(
         "forge_ideas",
         settings=settings,

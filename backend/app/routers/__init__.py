@@ -10,6 +10,7 @@ from app.routers import (
     health,
     hooks,
     ideas,
+    onboarding,
     posts,
     preferences,
     preview,
@@ -36,3 +37,4 @@ api_router.include_router(preview.router)
 api_router.include_router(voice.router)
 api_router.include_router(hooks.router)
 api_router.include_router(usage.router)
+api_router.include_router(onboarding.router)
