@@ -1,7 +1,7 @@
 // F08 — Sourced insight call refuses: the shipped classification surfaces the
 // refusal as GENERATION_FAILED ("insight card was incomplete") — additive-safe
 // by construction: the insights call fails alone and the ideas stay intact.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   API, authedStorage, setScenario,
 } from "../../utils/helpers.js";

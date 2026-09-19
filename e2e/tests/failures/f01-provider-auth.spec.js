@@ -1,7 +1,7 @@
 // F01 — Tavily 401: the typed PROVIDER_AUTH failure (PR #10 taxonomy: the
 // 503-family mapping does NOT apply to auth), no fabricated research, and
 // the shipped error banner with its key-problem affordance.
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   WEB, API, installDenyList, authedStorage, setScenario,
 } from "../../utils/helpers.js";

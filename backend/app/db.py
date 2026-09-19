@@ -16,7 +16,11 @@ from app.config import Settings
 
 # serverSelectionTimeoutMS keeps /health/ready and startup failures fast
 # instead of hanging for the 30s default when Mongo is unreachable.
+# socketTimeoutMS bounds a wedged socket READ on a healthy topology — without
+# it a stalled read (the F04 hang class, art_vqwfyodR) awaits forever. 15s
+# keeps the handler's typed 502 ahead of the frontend's 30s client timeout.
 _CLIENT_TIMEOUT_MS = 5_000
+_SOCKET_TIMEOUT_MS = 15_000
 
 _INDEX_SPECS: dict[str, list[IndexModel]] = {
     "users": [
@@ -124,7 +128,9 @@ _INDEX_SPECS: dict[str, list[IndexModel]] = {
 
 def create_client(settings: Settings) -> AsyncMongoClient[dict[str, Any]]:
     return AsyncMongoClient(
-        settings.mongo_url, serverSelectionTimeoutMS=_CLIENT_TIMEOUT_MS
+        settings.mongo_url,
+        serverSelectionTimeoutMS=_CLIENT_TIMEOUT_MS,
+        socketTimeoutMS=_SOCKET_TIMEOUT_MS,
     )
 
 

@@ -223,7 +223,12 @@ function refreshTokens() {
   return refreshInFlight;
 }
 
-const client = axios.create({ baseURL: API });
+// 30s ceiling (F04 diagnosis, art_vqwfyodR): nothing below the browser had a
+// deadline, so a wedged proxied request held the UI in its pending state
+// forever. A timeout throws with `request` set and no `response`, which
+// normalizeApiError maps to the NETWORK kind — the existing honest error card
+// with its retry affordance.
+const client = axios.create({ baseURL: API, timeout: 30000 });
 
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("ideaforge_token");

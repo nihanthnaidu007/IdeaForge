@@ -24,7 +24,11 @@ export const backendEnv = {
   REMINDER_INTERVAL_SECONDS: "1",
   RATE_LIMIT_AUTH_PER_MINUTE: "1000",
   CORS_ORIGINS: "http://127.0.0.1:4173,http://localhost:4173",
-  LOG_LEVEL: "WARNING",
+  // INFO (E2E only): RequestContextMiddleware's per-request completion lines
+  // (app.http) flow through the root logger, which this var gates — uvicorn's
+  // own --log-level flag does not. Without it a hung request leaves no
+  // backend evidence at all (F04 diagnosis, art_vqwfyodR §7).
+  LOG_LEVEL: "INFO",
 };
 
 export const webServers = [
@@ -35,7 +39,10 @@ export const webServers = [
     reuseExistingServer: !process.env.CI,
   },
   {
-    command: "python3 -m uvicorn app.main:app --port 8000",
+    // --log-level info (E2E only): uvicorn startup/error/access lines give
+    // CI runs transport-level evidence; the app's own per-request lines are
+    // gated separately by LOG_LEVEL above (F04 diagnosis, art_vqwfyodR §7).
+    command: "python3 -m uvicorn app.main:app --port 8000 --log-level info",
     url: `${API}/health/live`,
     cwd: "../backend",
     reuseExistingServer: !process.env.CI,
