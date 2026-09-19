@@ -49,6 +49,35 @@ const KEY_PROVIDERS = [
   },
 ];
 
+// Server-default banner line (Wave 1 caps): the bundled allowance with the
+// current usage and reset, stated as facts from GET /usage/caps. Renders only
+// when the deployment actually offers a bundled key — no allowance is claimed
+// that doesn't exist. BYOK keys are never capped and never counted.
+const BundledAllowanceLine = ({ caps }) => {
+  const llm = caps.resources.llm;
+  const research = caps.resources.research;
+  if (!llm && !research) return null;
+  if (!llm?.bundled_available && !research?.bundled_available) return null;
+  const reset = caps.resets_at
+    ? ` Resets ${new Date(caps.resets_at).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}.`
+    : "";
+  const parts = [];
+  if (llm?.bundled_available) parts.push(`${llm.limit} AI-generation calls`);
+  if (research?.bundled_available) parts.push(`${research.limit} research runs`);
+  const used = [];
+  if (llm?.bundled_available) used.push(`${llm.used} AI-generation`);
+  if (research?.bundled_available) used.push(`${research.used} research`);
+  return (
+    <p className="text-zinc-400 mt-2" data-testid="bundled-allowance-line">
+      Without your own keys, the app runs on the bundled server key: {parts.join(" and ")}{" "}
+      per day — used today: {used.join(" and ")}.{reset} Your own keys are never capped.
+    </p>
+  );
+};
+
 const Settings = () => {
   useAuth(); // auth guard is handled by ProtectedRoute
   const [preferences, setPreferences] = useState({
@@ -73,6 +102,7 @@ const Settings = () => {
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState(null);
   const [testState, setTestState] = useState({});
+  const [usageCaps, setUsageCaps] = useState(null);
 
   const fetchPreferences = useCallback(async () => {
     setStatus("loading");
@@ -106,6 +136,16 @@ const Settings = () => {
   useEffect(() => {
     fetchPreferences();
   }, [fetchPreferences]);
+
+  // Bundled-allowance state for the server-default banner (GET /usage/caps).
+  // Secondary surface: a failed read removes the allowance line — it never
+  // blocks Settings — but the failure is logged, never swallowed.
+  useEffect(() => {
+    api
+      .get("/usage/caps")
+      .then(setUsageCaps)
+      .catch((error) => console.error("usage caps read failed", error));
+  }, []);
 
   const savePreferences = async () => {
     setLoading(true);
@@ -265,6 +305,7 @@ const Settings = () => {
                       is available — or yours is rejected or out of credit — you'll see a clear error
                       telling you exactly what to fix.
                     </p>
+                    {usageCaps?.resources && <BundledAllowanceLine caps={usageCaps} />}
                   </div>
                 </div>
               </div>

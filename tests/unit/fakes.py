@@ -252,6 +252,11 @@ class FakeCollection:
                 return before if not return_document else self._project(doc, projection)
         if upsert and not isinstance(update, list):
             new_doc: dict[str, Any] = {}
+            # MongoDB upsert semantics: the created document is seeded with
+            # the filter's equality conditions before the update applies.
+            for field, value in query.items():
+                if not isinstance(value, dict):
+                    new_doc.setdefault(field, value)
             self._apply_update(new_doc, update)
             insert_key = self._doc_key(new_doc)
             self._next += 1
@@ -277,6 +282,9 @@ class FakeDatabase:
         # variant_sets + usage_events at startup).
         self.variant_sets = FakeCollection(unique_fields=("id",))
         self.usage_events = FakeCollection()
+        # Cap counters (Wave 1): one doc per user×resource×UTC day — declared
+        # explicitly like the other collections so attribute access works.
+        self.usage_counters = FakeCollection()
         self.voice_profiles = FakeCollection(unique_fields=("user_id",))
         # Hook Bank catalog rows: one doc per pattern×format — composite key.
         self.hooks = FakeCollection(

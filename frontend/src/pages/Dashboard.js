@@ -8,7 +8,7 @@ import VariantCompare, { FormatPicker } from "@/components/dashboard/VariantComp
 import HookPicker from "@/components/dashboard/HookPicker";
 import PostPreview from "@/components/dashboard/PostPreview";
 import { EmptyState, ErrorState, StaleBanner } from "@/components/states/AsyncStates";
-import { api } from "@/api/client";
+import { api, isKeyIssueError } from "@/api/client";
 import { useAuth } from "@/context/AuthContext";
 import { Sparkles } from "lucide-react";
 
@@ -58,6 +58,12 @@ const forgeStrings = (error) => {
     }
     // §3.1 map: the fix is the provider console; Settings remains reachable.
     return { headline: `Your ${PROVIDER_NAMES[provider] ?? provider} account is out of quota or credit.` };
+  }
+  if (kind === "cap") {
+    // Wave 1 caps: headline only — the body composes from the typed cap
+    // fields (allowance / resource / reset) in ErrorState's capCardBody, and
+    // the single primary action is always "Add your own key" → Settings.
+    return { headline: "Daily allowance spent." };
   }
   if (kind === "research_failed") {
     // §3.2 502 verbatim, {cause} filled from the backend's detail sentence.
@@ -207,16 +213,21 @@ const Dashboard = () => {
       setLastRunAt(new Date().toISOString());
       toast.success("Ideas forged");
     } catch (error) {
-      // §3.1 stale contract: when a refresh fails while old data is on
-      // screen, the old data stays under the dated stale banner — the error
-      // card replaces it only when there was nothing to keep.
-      if (ideas.length > 0 && lastRunAt) {
+      // Key-issue states (missing key, auth, quota, bundled cap) are fixed in
+      // Settings, not by retrying — their honest card must render even when
+      // earlier ideas are on screen (UI pack §3.1: one action per state).
+      if (isKeyIssueError(error)) {
+        setStaleAsOf(null);
+        setGenerateError(error);
+      } else if (ideas.length > 0 && lastRunAt) {
+        // §3.1 stale contract: when a refresh fails while old data is on
+        // screen, the old data stays under the dated stale banner — the error
+        // card replaces it only when there was nothing to keep.
         setStaleAsOf(lastRunAt);
-        toast.error(error.message);
       } else {
         setGenerateError(error);
-        toast.error(error.message);
       }
+      toast.error(error.message);
     } finally {
       setScanningText("");
       setScanningSub("");

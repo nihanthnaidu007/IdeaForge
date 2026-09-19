@@ -23,6 +23,7 @@ from app.services.llm.provider import (
     ProviderQuotaError,
     ProviderRateLimitedError,
     ProviderUnavailableError,
+    UsageCapExceeded,
 )
 from app.services.research import ResearchError
 from app.services.workflow_errors import (
@@ -39,6 +40,7 @@ _TYPED_ERRORS: tuple[type[Exception], ...] = (
     ProviderQuotaError,
     ProviderRateLimitedError,
     ProviderUnavailableError,
+    UsageCapExceeded,
     GenerationRefusedError,
     InsufficientEvidenceError,
     ProviderError,
@@ -62,6 +64,11 @@ async def _typed_error_handler(request: Request, exc: Exception) -> JSONResponse
     body: dict[str, object] = {"detail": str(exc), "kind": kind}
     if provider:
         body["provider"] = provider
+    # Typed payloads (e.g. UsageCapExceeded's allowance/resets_at) ride on an
+    # `extra` dict so the frontend renders facts from fields, not string parsing.
+    extra = getattr(exc, "extra", None)
+    if isinstance(extra, dict):
+        body.update({k: v for k, v in extra.items() if v is not None})
     request_id = get_request_id()
     if request_id:
         body["request_id"] = request_id

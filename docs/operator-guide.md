@@ -64,6 +64,8 @@ Every variable (names as in `backend/.env.example`):
 | `OPENAI_API_KEY`        | No                    | unset               | Server-default fallback, used only when a user has no saved OpenAI key.                                            |
 | `ANTHROPIC_API_KEY`     | No                    | unset               | Server-default fallback, used only when a user has no saved Anthropic key.                                         |
 | `TAVILY_API_KEY`        | No                    | unset               | Server-default fallback, used only when a user has no saved Tavily key.                                            |
+| `BUNDLED_DAILY_LLM_LIMIT` | No                  | `25`                | Daily per-user cap on bundled (server-default) model calls. BYOK keys are never capped or counted.                 |
+| `BUNDLED_DAILY_RESEARCH_LIMIT` | No             | `10`                | Daily per-user cap on bundled (server-default) research runs. BYOK keys are never capped or counted.               |
 | `OPENAI_MODEL`          | No                    | `gpt-5.2`           | Model id; env-configurable so defaults can age without code changes.                                               |
 | `ANTHROPIC_MODEL`       | No                    | `claude-sonnet-4-5` | Model id; env-configurable.                                                                                        |
 | `REDIS_URL`             | No                    | unset               | `redis://...` — shares rate-limit state across workers. See "Rate limiting".                                       |

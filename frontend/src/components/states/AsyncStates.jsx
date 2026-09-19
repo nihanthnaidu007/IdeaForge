@@ -113,14 +113,36 @@ const PROVIDER_BILLING_URLS = {
 // pack copy; actions always follow the kind. `secondary` is the §3.2 pattern:
 // a second action is allowed only when the primary or secondary leaves the
 // app (provider billing) or is equal-weight navigation (§3.14).
+// Bundled-allowance card (Wave 1 caps): resource names in user language, and
+// a body composed from the typed cap fields — never parsed from a message.
+const CAP_RESOURCE_LABEL = { llm: "AI generation", research: "research" };
+
+const capCardBody = (caps, fallback) => {
+  if (!caps || caps.allowance == null) return fallback;
+  const label = CAP_RESOURCE_LABEL[caps.resource] ?? "bundled";
+  const reset = caps.resetsAt
+    ? ` It resets ${new Date(caps.resetsAt).toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })}.`
+    : "";
+  return `Your bundled key covered its daily allowance of ${caps.allowance} ${label} calls.${reset} Add your own key in Settings — your keys, your usage, no cap.`;
+};
+
 export const ErrorState = ({ error, onRetry, title, strings, testId }) => {
   const navigate = useNavigate();
   const kind = error?.kind ?? "unknown";
   const retryAfter = useCountdown(error?.retryAfter);
-  const isKeyIssue = kind === "missing_key" || kind === "auth" || kind === "quota";
+  const isKeyIssue =
+    kind === "missing_key" || kind === "auth" || kind === "quota" || kind === "cap";
 
   const headline = strings?.headline ?? title ?? "That failed";
-  const body = strings?.body ?? error?.message ?? "An unexpected error occurred.";
+  const body =
+    strings?.body ??
+    (kind === "cap"
+      ? capCardBody(error?.caps, error?.message)
+      : error?.message) ??
+    "An unexpected error occurred.";
   const secondary = strings?.secondary;
 
   const detail =
@@ -130,7 +152,13 @@ export const ErrorState = ({ error, onRetry, title, strings, testId }) => {
 
   const primaryLabel =
     strings?.primary ??
-    (kind === "missing_key" ? "Add key" : kind === "auth" ? "Check keys" : null);
+    (kind === "missing_key"
+      ? "Add key"
+      : kind === "cap"
+        ? "Add your own key"
+        : kind === "auth"
+          ? "Check keys"
+          : null);
 
   const renderPrimary = () => {
     if (kind === "quota") {

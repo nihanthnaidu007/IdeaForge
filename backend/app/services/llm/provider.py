@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from app.config import Settings
+from app.services import usage as usage_counters
 from app.services.audit import build_key_audit_event
 from app.services.vault import Vault, VaultDecryptionError
 
@@ -27,6 +29,13 @@ _KEY_MISSING_COPY: dict[str, str] = {
     "anthropic": "No Anthropic API key configured. Please add your key in Settings.",
     "openai": "No OpenAI API key configured. Please add your key in Settings.",
 }
+
+# Honest cap copy: states the allowance, the reset, and the one recovery path.
+# The typed fields (allowance/resets_at) carry the same facts to the UI card.
+_USAGE_CAP_COPY = (
+    "Today's bundled allowance is spent ({allowance} calls). "
+    "It resets at {resets_at}. Add your own API key in Settings for unlimited use."
+)
 
 
 class ProviderError(Exception):
@@ -70,6 +79,43 @@ class ProviderRateLimitedError(ProviderError):
     ) -> None:
         super().__init__(message, provider=provider)
         self.retry_after = retry_after
+
+
+class UsageCapExceeded(ProviderError):
+    """Bundled-key daily allowance spent (HTTP 429, kind USAGE_CAP_EXCEEDED).
+
+    The hybrid model's honest wall: the operator's server-default key covered
+    its allowance for today, and the reset time is stated, not hidden. This is
+    never a punishment — recovery is one action (add your own key in Settings
+    for unlimited use) or waiting for the daily reset. BYOK callers never see
+    it: their keys are never capped and never counted.
+    """
+
+    status_code = 429
+    kind = "USAGE_CAP_EXCEEDED"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str | None = None,
+        resource: str | None = None,
+        allowance: int | None = None,
+        resets_at: datetime | None = None,
+        retry_after: int | None = None,
+    ) -> None:
+        super().__init__(message, provider=provider)
+        self.resource = resource
+        self.allowance = allowance
+        self.resets_at = resets_at
+        self.retry_after = retry_after
+        # Merged into the error body by app.errors so the frontend card can
+        # state the allowance and reset time from typed fields, not parsing.
+        self.extra = {
+            "resource": resource,
+            "allowance": allowance,
+            "resets_at": resets_at.isoformat() if resets_at else None,
+        }
 
 
 class ProviderUnavailableError(ProviderError):
@@ -183,6 +229,14 @@ async def resolve_user_key(
 
     No scaffold-layer fallback: an absent key is a typed error, never a
     third-party proxy key.
+
+    Cap law (Wave 1 hybrid model): a BYOK resolution returns immediately and
+    is never counted — the cap bounds the operator's spend, never the user.
+    A server-default (bundled) resolution authorizes one unit of the
+    provider's resource atomically before returning; over the daily limit it
+    raises UsageCapExceeded (429) instead of the key. The increment happens
+    here — at the authorization point, before any provider call — and is
+    never refunded when the provider call later fails (documented, honest).
     """
     prefs = await db.user_preferences.find_one({"user_id": user_id}, {"_id": 0})
     blob = ((prefs or {}).get("keys") or {}).get(provider)
@@ -206,6 +260,24 @@ async def resolve_user_key(
 
     env_key = getattr(settings, f"{provider}_api_key", None)
     if env_key:
+        resource = usage_counters.resource_for_provider(provider)
+        limit = usage_counters.bundled_daily_limit(settings, resource)
+        count = await usage_counters.authorize_daily_usage(
+            db, user_id, resource, limit=limit
+        )
+        if count is None:
+            reset = usage_counters.daily_usage_reset_at()
+            raise UsageCapExceeded(
+                _USAGE_CAP_COPY.format(
+                    allowance=limit,
+                    resets_at=reset.strftime("%Y-%m-%d %H:%M UTC"),
+                ),
+                provider=provider,
+                resource=resource,
+                allowance=limit,
+                resets_at=reset,
+                retry_after=usage_counters.seconds_until_reset(),
+            )
         return str(env_key)
 
     raise MissingKeyError(_KEY_MISSING_COPY[provider], provider=provider)
