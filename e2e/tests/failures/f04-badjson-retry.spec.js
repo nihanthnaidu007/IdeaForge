@@ -1,19 +1,26 @@
 // F04 — Malformed model output fails loudly (no fabricated cards), then the
 // SAME retry recovers when the provider behaves (stub flips scenario).
-import { test, expect } from "@playwright/test";
+import { test, expect } from "../../utils/failures-test.js";
 import {
   WEB, API, installDenyList, authedStorage, setScenario, clearStubRequests, routes,
 } from "../../utils/helpers.js";
 
-// Quarantined as test.fixme during the 2026-09-18 CI flakes; the unquarantine
-// attempt (PR #17) reded again on run 35344981425 — with request-level stub
+// Unquarantined per the F04 root-cause diagnosis (art_vqwfyodR). History:
+// quarantined as test.fixme during the 2026-09-18 CI flakes; PR #17's
+// unquarantine attempt re-died on run 35344981425 — with request-level stub
 // tracing in place, the retry's Anthropic insight call never left the backend
 // process (tavily research ran, then 15.7s of server-side silence; the stub
 // answered everything that arrived). Evidence and trace timeline:
 // https://github.com/nihanthnaidu007/IdeaForge/issues/16#issuecomment-5730080443
-test.fixme(
+//
+// The stall class is now structurally bounded instead of silent: the axios
+// client aborts a wedged request at 30s into the honest NETWORK error card,
+// the Mongo client bounds socket reads at 15s, and this project's page
+// fixture attaches a request-failure/HAR timeline whenever a test fails —
+// so a recurrence is both self-healing (retry recovers by construction) and
+// diagnostic (the timeline names the dead request).
+test(
   "F04: bad JSON once → typed failure with zero cards → retry recovers",
-  "CI-only: backend stalls between research and the insight LLM call — run 35344981425, trace evidence in #16",
   async ({ page, request }) => {
   installDenyList(page, test.info());
   const email = `f04-${Date.now()}@e2e.ideaforge.dev`;
