@@ -6,6 +6,8 @@ import SkipLink from "@/components/layout/SkipLink";
 import TrendRadar from "@/components/dashboard/TrendRadar";
 import IdeaCard from "@/components/dashboard/IdeaCard";
 import VariantCompare, { FormatPicker } from "@/components/dashboard/VariantCompare";
+import LinkedInPreviewPane from "@/components/board/LinkedInPreviewPane";
+import { copyGateFor } from "@/lib/linkedinLint";
 import HookPicker from "@/components/dashboard/HookPicker";
 import PostPreview from "@/components/dashboard/PostPreview";
 import { EmptyState, ErrorState, StaleBanner } from "@/components/states/AsyncStates";
@@ -457,9 +459,31 @@ const Dashboard = () => {
     }
   };
 
-  const copyPost = () => {
-    navigator.clipboard.writeText(generatedPost);
-    toast.success("Copied to clipboard");
+  // The copy path runs the same /preview/linkedin lint the Board preview
+  // runs (fix 7): the copy button is no longer the exit that skips the
+  // formatting checks. The gate's decision owns the toast; the clipboard is
+  // the only side effect after it allows the copy.
+  const copyPost = async () => {
+    let result = null;
+    try {
+      result = await api.post("/preview/linkedin", { text: generatedPost });
+    } catch {
+      // Fail closed: no verdict, no copy — silently skipping the promised
+      // checks is the exact drift this gate kills.
+      result = null;
+    }
+    const gate = copyGateFor(result);
+    if (!gate.allowed) {
+      toast.error(gate.message);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(generatedPost);
+    } catch {
+      toast.error("Copy failed — select the text and copy it manually.");
+      return;
+    }
+    toast.success(gate.message);
   };
 
   // Cost hints (§6 BYOK rule): one batched estimate for insight cards when a
@@ -710,6 +734,13 @@ const Dashboard = () => {
               onRegenerate={regenerateVariants}
               onSave={() => saveIdea(selectedIdea, selectedIdea.index, true)}
             />
+          )}
+
+          {/* §6.1 LinkedIn preview + linter on the Dashboard exit (fix 7):
+              the same pane the Board preview uses — live checks under the
+              draft, so the copy gate's verdict is never a mystery. */}
+          {pickedIndex != null && generatedPost && (
+            <LinkedInPreviewPane text={generatedPost} />
           )}
 
           {/* §6.2 Hook Picker (swap mode): on a live draft the picker swaps
