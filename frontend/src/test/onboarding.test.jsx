@@ -128,9 +128,10 @@ describe("welcome mat", () => {
     const mat = await screen.findByTestId("onboarding-welcome-mat");
     expect(mat).toHaveTextContent("Your forge is live");
     // Facts from /usage/caps, not marketing: bundled key + the daily cap.
-    expect(screen.getByTestId("onboarding-allowance-research")).toHaveTextContent(
-      "of 100 today",
-    );
+    // The caps fetch resolves after the mat paints, so await the first line;
+    // all allowance lines render atomically from the same capsSummary map.
+    const researchLine = await screen.findByTestId("onboarding-allowance-research");
+    expect(researchLine).toHaveTextContent("of 100 today");
     expect(screen.getByTestId("onboarding-allowance-llm")).toHaveTextContent(
       "2 of 50 today",
     );
