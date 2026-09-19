@@ -8,7 +8,7 @@ from app.models.auth import (
     UserLogin,
 )
 from app.models.ideas import GenerateIdeasRequest, IdeaInsightsRequest
-from app.models.posts import GeneratePostRequest, PostResponse, TweakPostRequest
+from app.models.posts import GeneratePostRequest, TweakPostRequest
 from app.models.preferences import PreferencesUpdate
 from app.models.research import ResearchRequest
 from app.models.saved import SavedIdea, SaveIdeaRequest
@@ -18,7 +18,6 @@ __all__ = [
     "GeneratePostRequest",
     "IdeaInsightsRequest",
     "LogoutRequest",
-    "PostResponse",
     "PreferencesUpdate",
     "RefreshRequest",
     "ResearchRequest",
