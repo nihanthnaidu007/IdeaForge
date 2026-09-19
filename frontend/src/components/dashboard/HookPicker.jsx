@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/api/client";
 import { POST_FORMATS } from "@/lib/constants";
-import { Check, HelpCircle, Loader2, Lock, MousePointerClick, RefreshCw } from "lucide-react";
+import { Check, Copy, HelpCircle, Loader2, Lock, MousePointerClick, Pencil, RefreshCw, Trash2 } from "lucide-react";
 
 // HookPicker, per the UI & Copy Craft Pack §6.2: filter chips by style, a
 // per-row source gate (requires_source hooks unlock only when the idea's
@@ -16,6 +17,15 @@ import { Check, HelpCircle, Loader2, Lock, MousePointerClick, RefreshCw } from "
 const SWAP_COST_HINT =
   "New hook, new draft — runs one model call on your key; cost depends on your provider pricing. The variant stays the same.";
 
+// Pattern bounds mirror the backend's HookCreate/HookUpdate Field constraints
+// (models/hooks.py): the same wrong input produces the same inline sentence
+// the backend's 422 would map to (UI craft pack §5.4 client pre-validation).
+const PATTERN_MIN = 3;
+const PATTERN_MAX = 280;
+const PATTERN_TOO_SHORT = `Pattern is required — at least ${PATTERN_MIN} characters.`;
+const PATTERN_TOO_LONG = `Pattern is too long — ${PATTERN_MAX} characters max.`;
+const DELETE_CONFIRM_TEXT = "Delete this hook? This can't be undone.";
+
 const styleLabel = (style) => String(style ?? "").replace(/_/g, " ");
 
 const formatLabel = (id) => POST_FORMATS.find((f) => f.id === id)?.name ?? id;
@@ -24,8 +34,9 @@ const formatLabel = (id) => POST_FORMATS.find((f) => f.id === id)?.name ?? id;
 // kebab-case (models/hooks.py maps the two).
 const toApiFormat = (id) => String(id ?? "").replace(/-/g, "_");
 
-const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemove, onSwap }) => {
+const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemove, onSwap, onSaveCopy, copying, editing, editValue, editError, savingEdit, onEditChange, onStartEdit, onSaveEdit, onCancelEdit, deleteConfirmOpen, deleting, onRequestDelete, onConfirmDelete, onCancelDelete }) => {
   const [whyOpen, setWhyOpen] = useState(false);
+  const isUserHook = !hook.is_builtin;
   const requiresOwnData = hook.tags?.includes("requires_own_data");
 
   return (
@@ -130,7 +141,151 @@ const HookRow = ({ hook, locked, selected, hasOriginal, swapping, onUse, onRemov
             Use hook
           </Button>
         )}
+        {hook.is_builtin && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSaveCopy}
+            disabled={copying}
+            data-testid={`hook-save-copy-${hook.id}`}
+            className="border-white/10 text-white hover:bg-white/5"
+          >
+            {copying ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <Copy className="w-3 h-3" aria-hidden="true" />
+                Save a copy
+              </>
+            )}
+          </Button>
+        )}
+        {isUserHook && !editing && !deleteConfirmOpen && (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onStartEdit}
+              data-testid={`hook-edit-${hook.id}`}
+              className="border-white/10 text-white hover:bg-white/5"
+            >
+              <Pencil className="w-3 h-3" aria-hidden="true" />
+              Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRequestDelete}
+              data-testid={`hook-delete-${hook.id}`}
+              className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+            >
+              <Trash2 className="w-3 h-3" aria-hidden="true" />
+              Delete
+            </Button>
+          </>
+        )}
       </div>
+
+      {isUserHook && deleteConfirmOpen && (
+        <div
+          className="mt-3 space-y-2"
+          data-testid={`hook-delete-confirm-${hook.id}`}
+          role="alertdialog"
+          aria-label="Confirm hook deletion"
+        >
+          <p className="text-sm text-zinc-300">{DELETE_CONFIRM_TEXT}</p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onConfirmDelete}
+              disabled={deleting}
+              data-testid={`hook-delete-confirm-btn-${hook.id}`}
+              className="border-red-500/40 text-red-400 hover:bg-red-500/10"
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3 h-3" aria-hidden="true" />
+                  Delete hook
+                </>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancelDelete}
+              disabled={deleting}
+              data-testid={`hook-delete-cancel-${hook.id}`}
+              className="text-zinc-400 hover:text-white"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isUserHook && editing && (
+        <div className="mt-3 space-y-2" data-testid={`hook-edit-form-${hook.id}`}>
+          <label
+            htmlFor={`hook-edit-input-${hook.id}`}
+            className="block text-xs text-zinc-400"
+          >
+            Edit your pattern
+          </label>
+          <Textarea
+            id={`hook-edit-input-${hook.id}`}
+            value={editValue}
+            onChange={(e) => onEditChange(e.target.value)}
+            rows={2}
+            disabled={savingEdit}
+            data-testid={`hook-edit-input-${hook.id}`}
+            className="bg-void border-white/10 text-white text-sm"
+            aria-invalid={editError ? "true" : undefined}
+            aria-describedby={editError ? `hook-edit-error-${hook.id}` : undefined}
+          />
+          {editError && (
+            <p className="text-xs text-red-400" data-testid={`hook-edit-error-${hook.id}`}>
+              {editError}
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={onSaveEdit}
+              disabled={savingEdit}
+              data-testid={`hook-edit-save-${hook.id}`}
+              className="bg-lime text-void hover:bg-lime-hover"
+            >
+              {savingEdit ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                  Saving…
+                </>
+              ) : (
+                "Save changes"
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancelEdit}
+              disabled={savingEdit}
+              data-testid={`hook-edit-cancel-${hook.id}`}
+              className="text-zinc-400 hover:text-white"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </li>
   );
 };
@@ -143,15 +298,43 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
   const [styleFilter, setStyleFilter] = useState("all");
   const [mineOnly, setMineOnly] = useState(false);
   const [swappingId, setSwappingId] = useState(null);
+  const [copyingId, setCopyingId] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [editPattern, setEditPattern] = useState("");
+  const [editError, setEditError] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const apiFormat = toApiFormat(format);
 
+  const fetchHooks = async () => {
+    const data = await api.get(`/hooks?format=${apiFormat}`);
+    setHooks(Array.isArray(data?.hooks) ? data.hooks : []);
+  };
+
   const load = async () => {
     setPhase("loading");
+    // Any reload (format switch, retry) starts the CRUD surfaces clean.
+    setEditingId(null);
+    setEditError(null);
+    setEditPattern("");
+    setDeleteConfirmId(null);
     try {
-      const data = await api.get(`/hooks?format=${apiFormat}`);
-      setHooks(Array.isArray(data?.hooks) ? data.hooks : []);
+      await fetchHooks();
       setPhase("ready");
+    } catch (error) {
+      setPhase("error");
+      toast.error(error.message);
+    }
+  };
+
+  // Post-mutation reload: a create/edit/delete that succeeded must not flash
+  // the full skeleton — only a failed re-read escalates to the error state
+  // (whose copy already says the saved data is safe).
+  const refresh = async () => {
+    try {
+      await fetchHooks();
     } catch (error) {
       setPhase("error");
       toast.error(error.message);
@@ -201,6 +384,94 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
       toast.error(error.message);
     } finally {
       setSwappingId(null);
+    }
+  };
+
+  // Save a copy (built-ins only): duplicates the pattern into the user's set
+  // via the existing POST /hooks route — built-ins stay read-only. The
+  // backend re-derives the requires_source tag; the copy carries the
+  // original's style/format so the Mine view keeps the same axes.
+  const saveCopy = async (hook) => {
+    setCopyingId(hook.id);
+    try {
+      await api.post("/hooks", {
+        text_pattern: hook.text_pattern,
+        style: hook.style,
+        format: hook.format,
+        tags: hook.tags ?? [],
+      });
+      toast.success("Copy saved to your Mine set — edit it there.");
+      await refresh();
+      // Reveal the duplicate where the toast says it lives. Only after the
+      // refresh lands, so Mine never flashes its empty state.
+      setMineOnly(true);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setCopyingId(null);
+    }
+  };
+
+  // Edit (user hooks only): the editor opens pre-filled with the row's
+  // pattern; a failed PUT keeps the user's text on screen — nothing lost.
+  const startEdit = (hook) => {
+    setEditingId(hook.id);
+    setEditPattern(hook.text_pattern);
+    setEditError(null);
+    setDeleteConfirmId(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditPattern("");
+    setEditError(null);
+  };
+
+  const saveEdit = async (hook) => {
+    const pattern = editPattern.trim();
+    if (pattern.length < PATTERN_MIN) {
+      setEditError(PATTERN_TOO_SHORT);
+      return;
+    }
+    if (pattern.length > PATTERN_MAX) {
+      setEditError(PATTERN_TOO_LONG);
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      // HookUpdate forbids extra fields (models/hooks.py) — the pattern is
+      // the only editable axis; style/format/tags stay as saved.
+      await api.put(`/hooks/${hook.id}`, { text_pattern: pattern });
+      toast.success("Hook updated.");
+      cancelEdit();
+      await refresh();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  // Delete (user hooks only): inline two-step confirm — the app's existing
+  // pattern (VoiceDNAEditor's re-extract confirm). First click asks, the
+  // second commits; Cancel makes no request.
+  const requestDelete = (hook) => {
+    setDeleteConfirmId(hook.id);
+    setEditingId(null);
+    setEditError(null);
+  };
+
+  const confirmDelete = async (hook) => {
+    setDeletingId(hook.id);
+    try {
+      await api.delete(`/hooks/${hook.id}`);
+      toast.success("Hook deleted.");
+      setDeleteConfirmId(null);
+      await refresh();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -296,8 +567,8 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
                   You haven't saved any hooks yet.
                 </p>
                 <p className="text-zinc-400 text-sm mb-3">
-                  Duplicate any built-in pattern with your own tweak and save it — your version
-                  keeps the same style and format tags.
+                  Use &quot;Save a copy&quot; on any built-in pattern — your copy lands here,
+                  where Edit and Delete work on it.
                 </p>
                 <Button
                   onClick={() => setMineOnly(false)}
@@ -346,9 +617,24 @@ const HookPicker = ({ format, selectedHookId, onSelect, originalPost, onSwapped,
                     selected={selectedHookId === hook.id}
                     hasOriginal={Boolean(originalPost)}
                     swapping={swappingId === hook.id}
+                    copying={copyingId === hook.id}
+                    editing={editingId === hook.id}
+                    editValue={editingId === hook.id ? editPattern : ""}
+                    editError={editingId === hook.id ? editError : null}
+                    savingEdit={savingEdit}
+                    onEditChange={setEditPattern}
+                    onStartEdit={() => startEdit(hook)}
+                    onSaveEdit={() => saveEdit(hook)}
+                    onCancelEdit={cancelEdit}
+                    deleteConfirmOpen={deleteConfirmId === hook.id}
+                    deleting={deletingId === hook.id}
+                    onRequestDelete={() => requestDelete(hook)}
+                    onConfirmDelete={() => confirmDelete(hook)}
+                    onCancelDelete={() => setDeleteConfirmId(null)}
                     onUse={() => onSelect?.(hook.id)}
                     onRemove={() => onSelect?.(null)}
                     onSwap={() => swap(hook)}
+                    onSaveCopy={() => saveCopy(hook)}
                   />
                 );
               })}

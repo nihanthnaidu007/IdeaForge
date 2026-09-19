@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import VoiceDNAEditor from "@/components/settings/VoiceDNAEditor";
 import HookPicker from "@/components/dashboard/HookPicker";
@@ -58,6 +58,14 @@ vi.mock("@/api/client", () => ({
 }));
 
 import { api, ApiError } from "@/api/client";
+import { toast } from "sonner";
+
+// CRUD flows assert the toast contract (success/error) directly, so sonner is
+// mocked at the module seam like board.test.jsx does — no Toaster, no jsdom
+// matchMedia dance, deterministic assertions.
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
+}));
 
 const activeProfileResponse = {
   profile: {
@@ -405,6 +413,11 @@ describe("HookPicker", () => {
     await userEvent.click(screen.getByTestId("hook-mine-chip"));
     const mineEmpty = await screen.findByTestId("hooks-empty-mine");
     expect(mineEmpty).toHaveTextContent("You haven't saved any hooks yet.");
+    // The body names only actions that exist: Save a copy lives on built-in
+    // rows, Edit and Delete live on user rows once the copy lands.
+    expect(mineEmpty).toHaveTextContent(
+      'Use "Save a copy" on any built-in pattern — your copy lands here, where Edit and Delete work on it.',
+    );
     await userEvent.click(screen.getByTestId("hooks-browse-builtins-btn"));
     await screen.findByTestId("hook-row-H01");
   });
@@ -442,5 +455,186 @@ describe("HookPicker", () => {
     await userEvent.click(dataChip);
     await screen.findByTestId("hook-row-H01");
     expect(dataChip).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("saves a copy of a built-in through POST /hooks and reveals it under Mine", async () => {
+    // Mutable backing list simulates the backend: the POST inserts, the next
+    // GET (the picker's refresh) returns the catalog plus the new user copy.
+    const userCopy = {
+      id: "U-copy1",
+      text_pattern: "Unpopular opinion: {claim}.",
+      style: "contrarian",
+      format: "hot_take",
+      tags: ["bold", "low_risk"],
+      is_builtin: false,
+      user_id: "usr_test",
+    };
+    const hooksNow = [...hookListResponse.hooks];
+    api.get.mockImplementation(() =>
+      Promise.resolve({ hooks: [...hooksNow], count: hooksNow.length }),
+    );
+    api.post.mockImplementation(() => {
+      hooksNow.push(userCopy);
+      return Promise.resolve(userCopy);
+    });
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H01");
+    await userEvent.click(screen.getByTestId("hook-save-copy-H01"));
+
+    // The duplicate carries the built-in's pattern, style, format, and tags —
+    // the backend derives requires_source itself (no route changes).
+    await waitFor(() => {
+      expect(api.post).toHaveBeenCalledWith("/hooks", {
+        text_pattern: "Unpopular opinion: {claim}.",
+        style: "contrarian",
+        format: "hot_take",
+        tags: ["bold", "low_risk"],
+      });
+    });
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        "Copy saved to your Mine set — edit it there.",
+      );
+    });
+    // The Mine view auto-reveals the duplicate — the empty state's promised
+    // flow (save a copy from Built-ins, then edit it there).
+    expect(await screen.findByTestId("hook-row-U-copy1")).toBeInTheDocument();
+    expect(screen.getByTestId("hook-mine-chip")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("surfaces a failed save-a-copy without touching the list", async () => {
+    api.get.mockResolvedValue(hookListResponse);
+    api.post.mockRejectedValue(
+      new ApiError({ status: 422, kind: "validation", message: "Pattern is too long — 280 characters max." }),
+    );
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H01");
+    await userEvent.click(screen.getByTestId("hook-save-copy-H01"));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Pattern is too long — 280 characters max.");
+    });
+    // Nothing was changed: the catalog still renders, no Mine switch happened.
+    expect(screen.getByTestId("hook-row-H01")).toBeInTheDocument();
+    expect(screen.getByTestId("hook-mine-chip")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("edits a user hook through the editor and PUTs only the pattern", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    // The editor opens pre-filled with the row's current pattern.
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    expect(editor).toHaveValue("My own pattern about {topic}.");
+
+    // fireEvent, not userEvent.type: hook patterns use {placeholder} braces,
+    // which userEvent would parse as special-key tokens.
+    const nextPattern = "Rewritten pattern: {angle} without the throat-clearing";
+    await userEvent.clear(editor);
+    fireEvent.change(editor, { target: { value: nextPattern } });
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    // HookUpdate forbids extra fields — the PUT carries the pattern only.
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith("/hooks/H52", {
+        text_pattern: nextPattern,
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith("Hook updated.");
+    // Saved: the editor closes and the Mine list refreshes without a skeleton.
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(await screen.findByTestId("hook-row-H52")).toBeInTheDocument();
+    expect(screen.queryByTestId("hook-edit-form-H52")).not.toBeInTheDocument();
+  });
+
+  it("blocks an edit below the pattern floor with an inline error and no request", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "no");
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    expect(await screen.findByTestId("hook-edit-error-H52")).toHaveTextContent(
+      "Pattern is required — at least 3 characters.",
+    );
+    expect(api.put).not.toHaveBeenCalled();
+    // The user's draft stays on screen — a failed edit loses nothing.
+    expect(screen.getByTestId("hook-edit-form-H52")).toBeInTheDocument();
+  });
+
+  it("blocks an edit above the pattern ceiling with an inline error and no request", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-edit-H52"));
+
+    const editor = await screen.findByTestId("hook-edit-input-H52");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, `x${"y".repeat(280)}`);
+    await userEvent.click(screen.getByTestId("hook-edit-save-H52"));
+
+    expect(await screen.findByTestId("hook-edit-error-H52")).toHaveTextContent(
+      "Pattern is too long — 280 characters max.",
+    );
+    expect(api.put).not.toHaveBeenCalled();
+  });
+
+  it("deletes a user hook only after the inline confirm", async () => {
+    api.get
+      .mockResolvedValueOnce(hookListWithUserHook)
+      .mockResolvedValueOnce(hookListResponse);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+
+    // First click asks: the confirm block appears, no DELETE yet.
+    await userEvent.click(screen.getByTestId("hook-delete-H52"));
+    expect(await screen.findByTestId("hook-delete-confirm-H52")).toHaveTextContent(
+      "Delete this hook? This can't be undone.",
+    );
+    expect(api.delete).not.toHaveBeenCalled();
+
+    // Second click commits.
+    await userEvent.click(screen.getByTestId("hook-delete-confirm-btn-H52"));
+    await waitFor(() => {
+      expect(api.delete).toHaveBeenCalledWith("/hooks/H52");
+    });
+    expect(toast.success).toHaveBeenCalledWith("Hook deleted.");
+    // The picker stays in Mine, which now shows its honest empty state — no
+    // silent filter flip. The empty state's affordance walks back to All.
+    expect(await screen.findByTestId("hooks-empty-mine")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("hooks-browse-builtins-btn"));
+    await screen.findByTestId("hook-row-H01");
+    expect(screen.queryByTestId("hook-row-H52")).not.toBeInTheDocument();
+  });
+
+  it("cancel in the delete confirm makes no request and keeps the row", async () => {
+    api.get.mockResolvedValue(hookListWithUserHook);
+    render(<HookPicker format="hot-take" />);
+
+    await screen.findByTestId("hook-row-H52");
+    await userEvent.click(screen.getByTestId("hook-mine-chip"));
+    await userEvent.click(screen.getByTestId("hook-delete-H52"));
+    await userEvent.click(screen.getByTestId("hook-delete-cancel-H52"));
+
+    expect(api.delete).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("hook-delete-confirm-H52")).not.toBeInTheDocument();
+    expect(screen.getByTestId("hook-row-H52")).toBeInTheDocument();
   });
 });
